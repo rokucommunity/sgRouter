@@ -11,7 +11,7 @@ namespace rokuRouter
         pattern as String ' /movies/:movieId/play
         component as String ' "MovieDetailsScreen"
         optional canActivate as Dynamic
-        optional isRoot as Boolean ' true
+        optional clearStackOnResolve as Boolean ' true
         optional keepRootAlive as Boolean ' false
     end interface
 

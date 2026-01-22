@@ -54,7 +54,7 @@ Each route object can include:
 |-----------|-------|-----------|-------------|
 | `pattern` | string | ✅ | URL-like path pattern (`"/details/movies/:id"`) |
 | `component` | string | ✅ | View component to render (must extend `rokuRouter_View`) |
-| `isRoot` | boolean | ❌ | Clears stack and resets breadcrumbs when true |
+| `clearStackOnResolve` | boolean | ❌ | Clears stack and resets breadcrumbs when true |
 | `canActivate` | function | ❌ | Guard function to control route access |
 
 ### View Lifecycle Methods
@@ -228,12 +228,12 @@ Attach one or more guards to any route using the `canActivate` array:
 
 ```brightscript
 rokuRouter.addRoutes([
-    { pattern: "/", component: "WelcomeScreen", isRoot: true },
+    { pattern: "/", component: "WelcomeScreen", clearStackOnResolve: true },
     { pattern: "/login", component: "LoginScreen" },
 
     ' Protected content – requires AuthManager.canActivate to allow
-    { pattern: "/shows", component: "CatalogScreen", isRoot: true, canActivate: [ m.global.AuthManager ] },
-    { pattern: "/movies", component: "CatalogScreen", isRoot: true, keepRootAlive: true, canActivate: [ m.global.AuthManager ] },
+    { pattern: "/shows", component: "CatalogScreen", clearStackOnResolve: true, canActivate: [ m.global.AuthManager ] },
+    { pattern: "/movies", component: "CatalogScreen", clearStackOnResolve: true, keepRootAlive: true, canActivate: [ m.global.AuthManager ] },
     { pattern: "/details/:type/:id", component: "DetailsScreen", canActivate: [ m.global.AuthManager ] },
     { pattern: "/details/:type/:id/cast", component: "CastDetailsScreen", canActivate: [ m.global.AuthManager ] }
 ])

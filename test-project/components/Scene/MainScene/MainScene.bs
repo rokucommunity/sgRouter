@@ -37,9 +37,9 @@ sub init()
 
     ' add the routes to the router
     rokuRouter.addRoutes([
-        { pattern: "/", component: "WelcomeScreen", isRoot: true },
-        { pattern: "/shows", component: "CatalogScreen", isRoot: true, canActivate: [m.global.AuthManager] },
-        { pattern: "/movies", component: "CatalogScreen", isRoot: true, keepRootAlive: true, canActivate: [{
+        { pattern: "/", component: "WelcomeScreen", clearStackOnResolve: true },
+        { pattern: "/shows", component: "CatalogScreen", clearStackOnResolve: true, canActivate: [m.global.AuthManager] },
+        { pattern: "/movies", component: "CatalogScreen", clearStackOnResolve: true, keepRootAlive: true, canActivate: [{
                 keyPath: "AuthManager.isLoggedIn",
                 scope: "global",
                 expectedValue: true,
@@ -78,7 +78,7 @@ sub onRouterStateChanged(event as Object)
     print `onRouterStateChanged: ${data.id} ${data.type}`
 
     if data.type = "NavigationEnd" then
-        m.mainMenu.visible = data.state.routeConfig.isRoot AND m.global.AuthManager.isLoggedIn
+        m.mainMenu.visible = data.state.routeConfig.clearStackOnResolve AND m.global.AuthManager.isLoggedIn
         m.loadingOverlay.visible = false
 
         ' signal the beacon that the app has launched

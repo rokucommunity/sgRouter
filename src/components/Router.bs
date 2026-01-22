@@ -42,7 +42,7 @@ sub _addRoutes(routes = [] as Object)
             component: ""
             allowReuse: false
             canActivate: []
-            isRoot: false
+            clearStackOnResolve: false
             keepRootAlive: false
         }, route)
     end for
@@ -217,7 +217,7 @@ function _navigateTo(path = "" as String, options = {} as Object) as Dynamic
                         return response
                     end function).toPromise()
                 else
-                    if newRoute.routeConfig.isRoot then
+                    if newRoute.routeConfig.clearStackOnResolve then
                         for each view in rodash.getNodeChildren(m.__router_viewTarget)
                             ' print "view to remove", view
                             viewsToRemove.push(view)
@@ -435,7 +435,7 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
                 params = {
                     route: view.route
                 }
-                if view.route.routeConfig.isRoot AND view.route.routeConfig.keepRootAlive then
+                if view.route.routeConfig.clearStackOnResolve AND view.route.routeConfig.keepRootAlive then
                     promisesToResolve.push(view@._onViewSuspend(params))
                 else
                     promisesToResolve.push(view@._beforeViewClose(params))
@@ -462,7 +462,7 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
     end function).then(function(response as Dynamic, internalContext as Dynamic) as Dynamic
         if rodash.isNonEmptyArray(internalContext.closeViews) then
             for each view in internalContext.closeViews
-                if view.route.routeConfig.isRoot AND view.route.routeConfig.keepRootAlive then
+                if view.route.routeConfig.clearStackOnResolve AND view.route.routeConfig.keepRootAlive then
                     if hideView(view) AND view.reparent(m.__router_suspendedViewTarget, true) then
                         m.__router_suspendedViewTarget.appendChild(view)
                     end if
