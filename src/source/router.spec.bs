@@ -44,7 +44,7 @@ namespace tests
                     "canactivate": []
                     "component": "View"
                     "clearStackOnResolve": false
-                    "keeprootalive": false
+                    "keepAlive": { enabled: false }
                     "pattern": "/alpha"
                 },
                 "/beta": {
@@ -52,7 +52,7 @@ namespace tests
                     "canactivate": []
                     "component": "View"
                     "clearStackOnResolve": false
-                    "keeprootalive": false
+                    "keepAlive": { enabled: false }
                     "pattern": "/beta"
                 }
             })
@@ -173,7 +173,7 @@ namespace tests
                     "canactivate": []
                     "component": "View"
                     "clearStackOnResolve": false
-                    "keeprootalive": false
+                    "keepAlive": { enabled: false }
                     "pattern": "/alpha"
                 },
                 "/beta": {
@@ -181,7 +181,7 @@ namespace tests
                     "canactivate": []
                     "component": "View"
                     "clearStackOnResolve": false
-                    "keeprootalive": false
+                    "keepAlive": { enabled: false }
                     "pattern": "/beta"
                 }
             })

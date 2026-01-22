@@ -39,7 +39,7 @@ sub init()
     rokuRouter.addRoutes([
         { pattern: "/", component: "WelcomeScreen", clearStackOnResolve: true },
         { pattern: "/shows", component: "CatalogScreen", clearStackOnResolve: true, canActivate: [m.global.AuthManager] },
-        { pattern: "/movies", component: "CatalogScreen", clearStackOnResolve: true, keepRootAlive: true, canActivate: [{
+        { pattern: "/movies", component: "CatalogScreen", clearStackOnResolve: true, keepAlive: { enabled: true }, canActivate: [{
                 keyPath: "AuthManager.isLoggedIn",
                 scope: "global",
                 expectedValue: true,

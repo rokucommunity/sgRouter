@@ -233,7 +233,7 @@ rokuRouter.addRoutes([
 
     ' Protected content – requires AuthManager.canActivate to allow
     { pattern: "/shows", component: "CatalogScreen", clearStackOnResolve: true, canActivate: [ m.global.AuthManager ] },
-    { pattern: "/movies", component: "CatalogScreen", clearStackOnResolve: true, keepRootAlive: true, canActivate: [ m.global.AuthManager ] },
+    { pattern: "/movies", component: "CatalogScreen", clearStackOnResolve: true, keepAlive: {enabled: false}, canActivate: [ m.global.AuthManager ] },
     { pattern: "/details/:type/:id", component: "DetailsScreen", canActivate: [ m.global.AuthManager ] },
     { pattern: "/details/:type/:id/cast", component: "CastDetailsScreen", canActivate: [ m.global.AuthManager ] }
 ])

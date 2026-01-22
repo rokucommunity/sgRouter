@@ -12,7 +12,7 @@ namespace rokuRouter
         component as String ' "MovieDetailsScreen"
         optional canActivate as Dynamic
         optional clearStackOnResolve as Boolean ' true
-        optional keepRootAlive as Boolean ' false
+        optional keepAlive as Object ' { enabled: false }
     end interface
 
     interface RouteUpdateEvent

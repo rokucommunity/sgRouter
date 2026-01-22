@@ -43,7 +43,7 @@ sub _addRoutes(routes = [] as Object)
             allowReuse: false
             canActivate: []
             clearStackOnResolve: false
-            keepRootAlive: false
+            keepAlive: { enabled: false }
         }, route)
     end for
 end sub
@@ -71,7 +71,7 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     promises.chain(closeView(viewToClose), viewToOpen).then(sub(response as Dynamic, view as Dynamic)
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
         view.route.navigationState = rodash.merge(view.route.navigationState, {
-            fromSuspendedRoot: false
+            fromKeepAlive: false
             fromPopState: true
             fromPushState: false
             fromRedirect: false
@@ -392,7 +392,7 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
             suspendedRootView = view
 
             route.navigationState = rodash.merge(route.navigationState, {
-                fromSuspendedRoot: true
+                fromKeepAlive: true
             })
             exit for
         end if
@@ -435,7 +435,7 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
                 params = {
                     route: view.route
                 }
-                if view.route.routeConfig.clearStackOnResolve AND view.route.routeConfig.keepRootAlive then
+                if view.route.routeConfig.clearStackOnResolve AND view.route.routeConfig.keepAlive.enabled then
                     promisesToResolve.push(view@._onViewSuspend(params))
                 else
                     promisesToResolve.push(view@._beforeViewClose(params))
@@ -462,7 +462,7 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
     end function).then(function(response as Dynamic, internalContext as Dynamic) as Dynamic
         if rodash.isNonEmptyArray(internalContext.closeViews) then
             for each view in internalContext.closeViews
-                if view.route.routeConfig.clearStackOnResolve AND view.route.routeConfig.keepRootAlive then
+                if view.route.routeConfig.clearStackOnResolve AND view.route.routeConfig.keepAlive.enabled then
                     if hideView(view) AND view.reparent(m.__router_suspendedViewTarget, true) then
                         m.__router_suspendedViewTarget.appendChild(view)
                     end if
@@ -630,7 +630,7 @@ end function
 function createBaseNavigationState() as Object
     return {
         fromRedirect: false
-        fromSuspendedRoot: false
+        fromKeepAlive: false
         fromPopState: false
         fromPushState: false
     }
