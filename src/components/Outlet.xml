@@ -6,7 +6,7 @@
         <!-- END READ ONLY -->
     </interface>
     <children>
-        <Group id="suspendedViewTarget" />
+        <Group id="keepAliveViewTarget" />
         <Group id="viewTarget" />
     </children>
 </component>

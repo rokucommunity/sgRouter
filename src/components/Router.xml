@@ -12,5 +12,6 @@
         <function name="_navigateTo" />
         <function name="_goBack" />
         <function name="_setFocus" />
+        <function name="_destroy" />
     </interface>
 </component>

@@ -30,6 +30,14 @@ namespace rokuRouter
         return Invalid
     end function
 
+    sub destroy()
+        r = rokuRouter.getRouter()
+        if rodash.isNotInvalid(r) then
+            r@._destroy()
+            m.top.getScene().removeField("__router")
+        end if
+    end sub
+
     ' This function is used to navigate to a different screen
     ' It will return a promise that will resolve when the navigation is complete
     ' @since 0.0.1
