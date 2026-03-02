@@ -144,6 +144,183 @@ namespace tests
 
 
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("goBack")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        @it("returns false when there is no history")
+        function _() 'bs:disable-line 1026 LINT1026
+            result = rokuRouter.goBack({ router: m.router })
+            m.assertFalse(result)
+        end function
+
+        @async()
+        @it("returns false when only one view is in the stack")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+            ])
+            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                result = rokuRouter.goBack({ router: m.router })
+                m.assertFalse(result)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("returns true and navigates back when there are multiple views")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return rokuRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                result = rokuRouter.goBack({ router: m.router })
+                m.assertTrue(result)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("returns false when navigation is already in progress")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return rokuRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' Start a new navigation (sets navigationInProgress = true)
+                rokuRouter.navigateTo("/alpha", { router: m.router })
+                ' goBack should be blocked
+                result = rokuRouter.goBack({ router: m.router })
+                m.assertFalse(result)
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("clearStackOnResolve")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        @async()
+        @it("clears non-keepAlive views from the stack")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/root", component: "View", clearStackOnResolve: true }
+            ])
+            viewTarget = m.outlet.findNode("viewTarget")
+            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return rokuRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 2)
+                return rokuRouter.navigateTo("/root", { router: m.router })
+            end function).then(function(_, m)
+                ' Only the root view should remain
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("preserves keepAlive views in keepAliveViewTarget on clearStackOnResolve")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/root", component: "View", clearStackOnResolve: true }
+            ])
+            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return rokuRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return rokuRouter.navigateTo("/root", { router: m.router })
+            end function).then(function(_, m)
+                ' /root is in viewTarget, /alpha is preserved in keepAliveViewTarget, /beta destroyed
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("keepAlive")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        @async()
+        @it("resumes a keepAlive view from keepAliveViewTarget on navigateTo")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", keepAlive: { enabled: true }, clearStackOnResolve: true }
+                { pattern: "/beta", component: "View", clearStackOnResolve: true }
+            ])
+            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                ' Navigate away — /alpha should be suspended into keepAliveViewTarget
+                return rokuRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                ' Navigate back to /alpha — should resume from keepAliveViewTarget
+                return rokuRouter.navigateTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha is active again; keepAliveViewTarget should be empty
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 0)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+                m.assertTrue(m.router.routerState.state.routeConfig.keepAlive.enabled)
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("allowReuse")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        @async()
+        @it("fires onRouteUpdate instead of creating a new view when allowReuse is true")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router.observeField("routerState", "onRouterStateChanged")
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", allowReuse: true }
+            ])
+            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                ' Navigate to the same route again — should reuse the view
+                return rokuRouter.navigateTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                ' Should go through ResolveStart → NavigationEnd without creating a new view
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertTrue(rodash.arrayContains(getGlobalAA().routerStatesHistory, "NavigationEnd"))
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("concurrent navigation")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        @async()
+        @it("rejects a second navigateTo while the first is in progress")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            ' Start nav 1 without awaiting it
+            rokuRouter.navigateTo("/alpha", { router: m.router })
+            ' Immediately start nav 2 — should be rejected
+            nav2 = rokuRouter.navigateTo("/beta", { router: m.router })
+            return promises.chain(nav2, m).then(function(_, m)
+                m.fail("Concurrent navigation should have been rejected")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+                m.assertEqual(error.message, "Navigation already in progress")
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("createRedirectCommand")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @it("creates a command")

@@ -7,10 +7,11 @@ sub init()
     m.__router_activeView = Invalid
     m.__router_focusRequestMade = false
     m.__router_guardInstances = {}
+    m.__router_historyStack = []
+    m.__router_navigationInProgress = false
     m.__router_outlet = Invalid
     m.__router_processingGoBack = false
     m.__router_routes = {}
-    m.__router_historyStack = []
 
     m.top.focusable = true
 end sub
@@ -43,10 +44,11 @@ sub _destroy()
     m.__router_activeView = Invalid
     m.__router_focusRequestMade = false
     m.__router_guardInstances = {}
+    m.__router_historyStack = []
+    m.__router_navigationInProgress = false
     m.__router_outlet = Invalid
     m.__router_processingGoBack = false
     m.__router_routes = {}
-    m.__router_historyStack = []
 
     rodash.removeNodeChildren(m.__router_viewTarget)
     rodash.removeNodeChildren(m.__router_keepAliveViewTarget)
@@ -79,10 +81,15 @@ end function
 ' Function to navigate back in the router history
 ' @returns {Boolean} - Whether the navigation was successful or not
 function _goBack(_ = Invalid as Dynamic) as Dynamic
+    if m.__router_navigationInProgress then return false
     m.__router_processingGoBack = true
+    m.__router_navigationInProgress = true
     views = rodash.getNodeChildren(m.__router_viewTarget)
     numberOfViews = views.count()
-    if numberOfViews <= 1 then return false
+    if numberOfViews <= 1 then
+        m.__router_navigationInProgress = false
+        return false
+    end if
 
     viewToClose = views.pop()
     viewToOpen = views.peek()
@@ -120,6 +127,9 @@ end function
 ' @param {Object} options - The route config overrides
 ' @returns {Dynamic} - The result of the navigation
 function _navigateTo(path = "" as String, options = {} as Object) as Dynamic
+    if m.__router_navigationInProgress then return promises.reject({ message: "Navigation already in progress" })
+    m.__router_navigationInProgress = true
+
     routeConfigOverrides = rodash.getAA(options, "routeConfigOverrides")
     navigationState = rodash.getAA(options, "navigationState")
     context = rodash.getAA(options, "context")
@@ -171,6 +181,7 @@ function _navigateTo(path = "" as String, options = {} as Object) as Dynamic
             route: newRoute
         })
 
+        m.__router_navigationInProgress = false
         return promises.reject(message)
     end if
 
@@ -273,6 +284,9 @@ function _navigateTo(path = "" as String, options = {} as Object) as Dynamic
         })
 
         return promises.reject(message)
+    end function).catch(function(error as Dynamic) as Dynamic
+        m.__router_navigationInProgress = false
+        return promises.reject(error)
     end function).toPromise()
 end function
 
@@ -375,6 +389,8 @@ function runGuardChecks(route as Dynamic) as Dynamic
                         toMerge.push({ navigationState: { fromRedirect: true } })
 
                         options = rodash.merge({}, toMerge)
+                        ' Reset flag so the redirect can start a fresh navigation
+                        m.__router_navigationInProgress = false
                         return promises.resolve({ allow: false, redirect: _navigateTo(redirectTo, options) })
                     end if
                 else
@@ -465,8 +481,18 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         m.__router_viewTarget.appendChild(view)
         view.reparent(m.__router_viewTarget, true)
 
-        ' Hide the current active view; only fire _onViewSuspend if it has keepAlive enabled
-        hideView(m.__router_activeView, m.__router_activeView <> Invalid AND rodash.getBoolean(m.__router_activeView.route.routeConfig.keepAlive, "enabled"))
+        ' Hide the current active view; fire _onViewSuspend only if keepAlive and not already
+        ' handled by the closeViews loop below (which awaits the promise properly)
+        isActiveInCloseViews = false
+        if m.__router_activeView <> Invalid then
+            for each cv in internalContext.closeViews
+                if cv.id = m.__router_activeView.id then
+                    isActiveInCloseViews = true
+                    exit for
+                end if
+            end for
+        end if
+        hideView(m.__router_activeView, NOT isActiveInCloseViews AND m.__router_activeView <> Invalid AND rodash.getBoolean(m.__router_activeView.route.routeConfig.keepAlive, "enabled"))
 
         ' Close or suspend any views we need to remove (keepAlive views always suspend)
         promisesToResolve = []
@@ -624,6 +650,7 @@ function showView(view as Object, onResume = false as Boolean) as Dynamic
             end if
 
             m.__router_processingGoBack = false
+            m.__router_navigationInProgress = false
             dispatchRouterState(RouterState.NavigationEnd, {
                 id: context.view.id
                 route: context.view.route
