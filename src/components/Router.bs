@@ -36,7 +36,7 @@ function _initialize(params = {} as Object) as Dynamic
     return m.top
 end function
 
-sub _destroy()
+sub _destroy(_ = Invalid as Dynamic)
     if m.__router_outlet <> Invalid then
         m.__router_outlet.unobserveField("focusedChild")
     end if
@@ -61,14 +61,15 @@ end sub
 ' @param {Array} routes - The routes to add
 sub _addRoutes(routes = [] as Object)
     for each route in routes
-        m.__router_routes[route.pattern] = rodash.merge({
-            pattern: ""
+        merged = rodash.merge({
+            pattern: route.pattern
             component: ""
             allowReuse: false
             canActivate: []
             clearStackOnResolve: false
             keepAlive: { enabled: false }
         }, route)
+        m.__router_routes[route.pattern] = merged
     end for
 end sub
 
@@ -84,15 +85,44 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     if m.__router_navigationInProgress then return false
     m.__router_processingGoBack = true
     m.__router_navigationInProgress = true
-    views = rodash.getNodeChildren(m.__router_viewTarget)
-    numberOfViews = views.count()
-    if numberOfViews <= 1 then
+
+    if m.__router_historyStack.count() <= 1 then
         m.__router_navigationInProgress = false
+        m.__router_processingGoBack = false
         return false
     end if
 
-    viewToClose = views.pop()
-    viewToOpen = views.peek()
+    ' Find the previous path from historyStack
+    previousPath = m.__router_historyStack[m.__router_historyStack.count() - 2]
+
+    ' Search viewTarget first, then keepAliveViewTarget
+    viewToOpen = Invalid
+    viewToOpenFromKeepAlive = false
+    for each v in rodash.getNodeChildren(m.__router_viewTarget)
+        if v.route.path = previousPath then
+            viewToOpen = v
+            exit for
+        end if
+    end for
+    if viewToOpen = Invalid then
+        for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
+            if v.route.path = previousPath then
+                viewToOpen = v
+                viewToOpenFromKeepAlive = true
+                exit for
+            end if
+        end for
+    end if
+
+    if viewToOpen = Invalid then
+        m.__router_navigationInProgress = false
+        m.__router_processingGoBack = false
+        return false
+    end if
+
+    if viewToOpenFromKeepAlive then
+        viewToOpen.reparent(m.__router_viewTarget, true)
+    end if
 
     ' An event triggered when a navigation starts.
     dispatchRouterState(RouterState.NavigationStart, {
@@ -100,7 +130,8 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
         route: viewToOpen.route
     })
 
-    ' If the popped view is keepAlive-enabled, suspend it instead of closing/destroying it
+    ' Close or suspend the current view
+    viewToClose = m.__router_activeView
     closePromise = Invalid
     if rodash.getBoolean(viewToClose.route.routeConfig.keepAlive, "enabled") then
         closePromise = suspendView(viewToClose)
@@ -481,8 +512,7 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         m.__router_viewTarget.appendChild(view)
         view.reparent(m.__router_viewTarget, true)
 
-        ' Hide the current active view; fire _onViewSuspend only if keepAlive and not already
-        ' handled by the closeViews loop below (which awaits the promise properly)
+        ' Determine whether the active view is in the closeViews list.
         isActiveInCloseViews = false
         if m.__router_activeView <> Invalid then
             for each cv in internalContext.closeViews
@@ -492,16 +522,33 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
                 end if
             end for
         end if
-        hideView(m.__router_activeView, NOT isActiveInCloseViews AND m.__router_activeView <> Invalid AND rodash.getBoolean(m.__router_activeView.route.routeConfig.keepAlive, "enabled"))
 
-        ' Close or suspend any views we need to remove (keepAlive views always suspend)
+        ' Build lifecycle promises to resolve before showing the new view.
         promisesToResolve = []
+
+        ' Handle the active view:
+        ' - keepAlive AND not in closeViews: suspend and move to keepAliveViewTarget (awaited)
+        ' - in closeViews: just hide; lifecycle is handled by the closeViews loop below
+        ' - otherwise: just hide
+        if m.__router_activeView <> Invalid then
+            if NOT isActiveInCloseViews AND rodash.getBoolean(m.__router_activeView.route.routeConfig.keepAlive, "enabled") then
+                promisesToResolve.push(suspendView(m.__router_activeView))
+            else
+                hideView(m.__router_activeView, false)
+            end if
+        end if
+
+        ' Close or suspend views in closeViews.
+        ' For keepAlive views: only call _onViewSuspend if this view IS the active view (first suspension).
+        ' Non-active keepAlive views are already in keepAliveViewTarget from prior forward navigation.
         if rodash.isNonEmptyArray(internalContext.closeViews) then
             for each cv in internalContext.closeViews
                 params = { route: cv.route }
 
                 if rodash.getBoolean(cv.route.routeConfig.keepAlive, "enabled") then
-                    promisesToResolve.push(cv@._onViewSuspend(params))
+                    if m.__router_activeView <> Invalid AND cv.id = m.__router_activeView.id then
+                        promisesToResolve.push(cv@._onViewSuspend(params))
+                    end if
                 else
                     promisesToResolve.push(cv@._beforeViewClose(params))
                 end if
@@ -525,14 +572,15 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         'now that all lifecycle promises have resolved, show the new view
         return showView(internalContext.view, internalContext.fromKeepAlive)
     end function).then(function(response as Dynamic, internalContext as Dynamic) as Dynamic
-        ' Remove/suspend views after the new view is visible
+        ' Remove/suspend views after the new view is visible.
+        ' keepAlive: reparent synchronously (_onViewSuspend already called above).
+        ' non-keepAlive: destroy.
         if rodash.isNonEmptyArray(internalContext.closeViews) then
             for each cv in internalContext.closeViews
                 if rodash.getBoolean(cv.route.routeConfig.keepAlive, "enabled") then
-                    ' keepAlive: suspend and move to keepAlive target (do not destroy)
-                    suspendView(cv)
+                    hideView(cv, false)
+                    cv.reparent(m.__router_keepAliveViewTarget, true)
                 else
-                    ' non-keepAlive: destroy
                     if hideView(cv, false) then rodash.removeNode(cv)
                 end if
             end for
@@ -596,6 +644,11 @@ end function
 ' @param {Object} event - The event object
 sub onFocusChildChanged(event as Object)
     inFocusChain = event.getData() <> Invalid
+
+    ' Don't update focus state mid-navigation: suspending/reparenting views causes transient
+    ' focus loss that would clear m.__router_focusRequestMade. showView.finally restores focus
+    ' once the new view is visible.
+    if m.__router_navigationInProgress then return
 
     if NOT m.__router_processingGoBack AND m.__router_activeView <> Invalid AND NOT inFocusChain AND m.__router_focusRequestMade <> inFocusChain then
         m.__router_focusRequestMade = inFocusChain
@@ -758,22 +811,8 @@ function findMatchingRoute(path as String, routes as Object) as rokuRouter.Route
     queryParams = parseQueryString(queryString)
 
     ' ============================================================
-    ' 1) First check for exact matches (static paths)
-    ' ============================================================
-    for each routePath in routes
-        if normalizePath(routePath) = basePath then
-            return createRouteObject({
-                path: path
-                routeConfig: routes[routePath]
-                queryParams: queryParams
-                hash: hash
-            })
-        end if
-    end for
-
-    ' ============================================================
-    ' 2) Then check parameterized matches, but choose the
-    '    *most specific* match (most static segments)
+    ' Single-pass match: exact wins immediately; parameterized
+    ' tracks the best (most static segments) candidate.
     ' ============================================================
     bestMatchRoutePath = Invalid
     bestMatchParams = Invalid
@@ -782,9 +821,20 @@ function findMatchingRoute(path as String, routes as Object) as rokuRouter.Route
     pathParts = basePath.split("/")
 
     for each routePath in routes
-        routeParts = normalizePath(routePath).split("/")
+        normalizedRoutePath = normalizePath(routePath)
 
-        ' Must have same number of segments
+        ' Fast path: exact static match — return immediately
+        if normalizedRoutePath = basePath then
+            return createRouteObject({
+                path: path
+                routeConfig: routes[routePath]
+                queryParams: queryParams
+                hash: hash
+            })
+        end if
+
+        ' Parameterized match — segment count must align
+        routeParts = normalizedRoutePath.split("/")
         if routeParts.count() = pathParts.count() then
             matchedParams = {}
             isMatch = true
