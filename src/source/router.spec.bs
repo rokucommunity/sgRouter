@@ -21,6 +21,7 @@ namespace tests
 
             children = m.router.getChildren(-1, 0)
             m.router.removeChildren(children)
+            m.router@._destroy()
 
             m.router.appendChild(m.outlet)
             globalAA.top.appendChild(m.router)
@@ -65,6 +66,7 @@ namespace tests
         @async()
         @it("navigates to a known path")
         function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
             m.router.observeField("routerState", "onRouterStateChanged")
 
             'register some routes
@@ -98,6 +100,7 @@ namespace tests
         @async()
         @it("navigates to an unknown path")
         function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
             m.router.observeField("routerState", "onRouterStateChanged")
 
             'register some routes
@@ -120,6 +123,7 @@ namespace tests
         @async()
         @it("Route has no View component")
         function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
             m.router.observeField("routerState", "onRouterStateChanged")
 
             'register some routes
@@ -231,8 +235,8 @@ namespace tests
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
             m.router@._addRoutes([
-                { pattern: "/alpha", component: "View", keepAlive: { enabled: true } }
-                { pattern: "/beta", component: "View" }
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", keepAlive: { enabled: true } }
                 { pattern: "/root", component: "View", clearStackOnResolve: true }
             ])
             return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
@@ -292,7 +296,7 @@ namespace tests
             end function).then(function(_, m)
                 ' Should go through ResolveStart → NavigationEnd without creating a new view
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
-                m.assertTrue(rodash.arrayContains(getGlobalAA().routerStatesHistory, "NavigationEnd"))
+                m.assertTrue(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationEnd") <> -1)
             end function).toPromise()
         end function
 
@@ -337,8 +341,9 @@ namespace tests
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("getRoutes")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-        @it("getsRoutes")
+        @it("getRoutes")
         function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
             rokuRouter.addRoutes([
                 { pattern: "/alpha", component: "View" },
                 { pattern: "/beta", component: "View" },
@@ -349,16 +354,16 @@ namespace tests
                     "allowreuse": false
                     "canactivate": []
                     "component": "View"
-                    "clearStackOnResolve": false
-                    "keepAlive": { enabled: false }
+                    "clearstackonresolve": false
+                    "keepalive": { enabled: false }
                     "pattern": "/alpha"
-                },
+                }
                 "/beta": {
                     "allowreuse": false
                     "canactivate": []
                     "component": "View"
-                    "clearStackOnResolve": false
-                    "keepAlive": { enabled: false }
+                    "clearstackonresolve": false
+                    "keepalive": { enabled: false }
                     "pattern": "/beta"
                 }
             })
