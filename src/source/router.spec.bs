@@ -244,7 +244,7 @@ namespace tests
             end function).then(function(_, m)
                 return rokuRouter.navigateTo("/root", { router: m.router })
             end function).then(function(_, m)
-                ' /root is in viewTarget, /alpha is preserved in keepAliveViewTarget, /beta destroyed
+                ' /root is in viewTarget, /beta is preserved in keepAliveViewTarget, /alpha destroyed
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
                 m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
             end function).toPromise()
