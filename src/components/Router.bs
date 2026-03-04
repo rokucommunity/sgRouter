@@ -84,10 +84,8 @@ end function
 function _goBack(_ = Invalid as Dynamic) as Dynamic
     if m.__router_navigationInProgress then return false
     m.__router_processingGoBack = true
-    m.__router_navigationInProgress = true
 
     if m.__router_historyStack.count() <= 1 then
-        m.__router_navigationInProgress = false
         m.__router_processingGoBack = false
         return false
     end if
@@ -115,7 +113,6 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     end if
 
     if viewToOpen = Invalid then
-        m.__router_navigationInProgress = false
         m.__router_processingGoBack = false
         return false
     end if
@@ -159,7 +156,6 @@ end function
 ' @returns {Dynamic} - The result of the navigation
 function _navigateTo(path = "" as String, options = {} as Object) as Dynamic
     if m.__router_navigationInProgress then return promises.reject({ message: "Navigation already in progress" })
-    m.__router_navigationInProgress = true
 
     routeConfigOverrides = rodash.getAA(options, "routeConfigOverrides")
     navigationState = rodash.getAA(options, "navigationState")
@@ -212,7 +208,6 @@ function _navigateTo(path = "" as String, options = {} as Object) as Dynamic
             route: newRoute
         })
 
-        m.__router_navigationInProgress = false
         return promises.reject(message)
     end if
 
@@ -703,7 +698,6 @@ function showView(view as Object, onResume = false as Boolean) as Dynamic
             end if
 
             m.__router_processingGoBack = false
-            m.__router_navigationInProgress = false
             dispatchRouterState(RouterState.NavigationEnd, {
                 id: context.view.id
                 route: context.view.route
@@ -745,6 +739,12 @@ end function
 ' @param {String} stateType - The type of state to dispatch
 ' @param {Object} context - The context to pass to the state
 sub dispatchRouterState(stateType as String, context = {} as Dynamic)
+    if stateType = RouterState.NavigationStart then
+        m.__router_navigationInProgress = true
+    else if stateType = RouterState.NavigationEnd OR stateType = RouterState.NavigationError then
+        m.__router_navigationInProgress = false
+    end if
+
     update = {
         type: stateType
         id: rodash.getString(context, "route.id", context.id)
