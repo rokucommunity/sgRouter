@@ -44,16 +44,16 @@ namespace tests
                     "allowreuse": false
                     "canactivate": []
                     "component": "View"
-                    "clearStackOnResolve": false
-                    "keepAlive": { enabled: false }
+                    "clearstackonresolve": false
+                    "keepalive": { enabled: false }
                     "pattern": "/alpha"
                 },
                 "/beta": {
                     "allowreuse": false
                     "canactivate": []
                     "component": "View"
-                    "clearStackOnResolve": false
-                    "keepAlive": { enabled: false }
+                    "clearstackonresolve": false
+                    "keepalive": { enabled: false }
                     "pattern": "/beta"
                 }
             })
