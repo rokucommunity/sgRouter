@@ -2,17 +2,32 @@ namespace rokuRouter
     interface RouteObject
         path as String ' /movies/3/play?autoPlayNext=true#browseWhileWatching
         routeConfig as rokuRouter.RouteConfig
-        routeParams as Object ' { movieId: 3}
+        routeParams as Object ' { movieId: 3 }
         queryParams as Object ' { autoPlayNext: true }
-        hash as String ' #browseWhileWatching
+        hash as String ' browseWhileWatching
+        id as String ' unique UUID per navigation
+        navigationState as rokuRouter.NavigationState
+        context as Object ' arbitrary caller-provided data
     end interface
 
     interface RouteConfig
         pattern as String ' /movies/:movieId/play
         component as String ' "MovieDetailsScreen"
+        optional allowReuse as Boolean ' call onRouteUpdate instead of creating a new view
         optional canActivate as Dynamic
-        optional isRoot as Boolean ' true
-        optional keepRootAlive as Boolean ' false
+        optional clearStackOnResolve as Boolean ' clear the view stack when this route is activated
+        optional keepAlive as rokuRouter.KeepAliveConfig
+    end interface
+
+    interface KeepAliveConfig
+        enabled as Boolean ' when true, the view is suspended instead of destroyed on navigation
+    end interface
+
+    interface NavigationState
+        fromPushState as Boolean ' normal forward navigation
+        fromPopState as Boolean ' back navigation (_goBack)
+        fromKeepAlive as Boolean ' resumed from keepAliveViewTarget cache
+        fromRedirect as Boolean ' arrived via a canActivate guard redirect
     end interface
 
     interface RouteUpdateEvent
@@ -20,7 +35,11 @@ namespace rokuRouter
         newRoute as rokuRouter.RouteObject
     end interface
 
-    interface RouterState
-        type as String
+    interface RouterStateEvent
+        type as String ' NavigationStart | RoutesRecognized | GuardsCheckStart | GuardsCheckEnd | ActivationStart | ActivationEnd | ResolveStart | ResolveEnd | NavigationEnd | NavigationCancel | NavigationError
+        id as String ' route id
+        optional url as String ' route path
+        optional state as Object ' route snapshot (routeConfig, queryParams, routeParams, hash)
+        optional error as Object ' only present on NavigationError
     end interface
 end namespace

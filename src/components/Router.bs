@@ -7,6 +7,8 @@ sub init()
     m.__router_activeView = Invalid
     m.__router_focusRequestMade = false
     m.__router_guardInstances = {}
+    m.__router_historyStack = []
+    m.__router_navigationInProgress = false
     m.__router_outlet = Invalid
     m.__router_processingGoBack = false
     m.__router_routes = {}
@@ -28,50 +30,116 @@ function _initialize(params = {} as Object) as Dynamic
 
         ' Temp for now
         m.__router_viewTarget = m.__router_outlet.findNode("viewTarget")
-        m.__router_suspendedViewTarget = m.__router_outlet.findNode("suspendedViewTarget")
+        m.__router_keepAliveViewTarget = m.__router_outlet.findNode("keepAliveViewTarget")
     end if
 
     return m.top
 end function
 
-' Function to add routes to the router' @param {Array} routes - The routes to add
+sub _destroy(_ = Invalid as Dynamic)
+    if m.__router_outlet <> Invalid then
+        m.__router_outlet.unobserveField("focusedChild")
+    end if
+
+    m.__router_activeView = Invalid
+    m.__router_focusRequestMade = false
+    m.__router_guardInstances = {}
+    m.__router_historyStack = []
+    m.__router_navigationInProgress = false
+    m.__router_outlet = Invalid
+    m.__router_processingGoBack = false
+    m.__router_routes = {}
+
+    rodash.removeNodeChildren(m.__router_viewTarget)
+    rodash.removeNodeChildren(m.__router_keepAliveViewTarget)
+
+    m.__router_viewTarget = Invalid
+    m.__router_keepAliveViewTarget = Invalid
+end sub
+
+' Function to add routes to the router
+' @param {Array} routes - The routes to add
 sub _addRoutes(routes = [] as Object)
     for each route in routes
-        m.__router_routes[route.pattern] = rodash.merge({
-            pattern: ""
+        merged = rodash.merge({
+            pattern: route.pattern
             component: ""
             allowReuse: false
             canActivate: []
-            isRoot: false
-            keepRootAlive: false
+            clearStackOnResolve: false
+            keepAlive: { enabled: false }
         }, route)
+        m.__router_routes[route.pattern] = merged
     end for
 end sub
 
-' Function to get the routes' @returns {Array} - The routes
+' Function to get the routes
+' @returns {Array} - The routes
 function _getRoutes(_ = Invalid as Dynamic) as Dynamic
     return m.__router_routes
 end function
 
-' Function to navigate back in the router history' @returns {Boolean} - Whether the navigation was successful or not
+' Function to navigate back in the router history
+' @returns {Boolean} - Whether the navigation was successful or not
 function _goBack(_ = Invalid as Dynamic) as Dynamic
+    if m.__router_navigationInProgress then return false
     m.__router_processingGoBack = true
-    views = rodash.getNodeChildren(m.__router_viewTarget)
-    numberOfViews = views.count()
-    if numberOfViews <= 1 then return false
 
-    viewToClose = views.pop()
-    viewToOpen = views.peek()
+    if m.__router_historyStack.count() <= 1 then
+        m.__router_processingGoBack = false
+        return false
+    end if
+
+    ' Find the previous path from historyStack
+    previousPath = m.__router_historyStack[m.__router_historyStack.count() - 2]
+
+    ' Search viewTarget first, then keepAliveViewTarget
+    viewToOpen = Invalid
+    viewToOpenFromKeepAlive = false
+    for each v in rodash.getNodeChildren(m.__router_viewTarget)
+        if v.route.path = previousPath then
+            viewToOpen = v
+            exit for
+        end if
+    end for
+    if viewToOpen = Invalid then
+        for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
+            if v.route.path = previousPath then
+                viewToOpen = v
+                viewToOpenFromKeepAlive = true
+                exit for
+            end if
+        end for
+    end if
+
+    if viewToOpen = Invalid then
+        m.__router_processingGoBack = false
+        return false
+    end if
+
+    if viewToOpenFromKeepAlive then
+        viewToOpen.reparent(m.__router_viewTarget, true)
+    end if
 
     ' An event triggered when a navigation starts.
     dispatchRouterState(RouterState.NavigationStart, {
         id: viewToOpen.route.id
         route: viewToOpen.route
     })
-    promises.chain(closeView(viewToClose), viewToOpen).then(sub(response as Dynamic, view as Dynamic)
+
+    ' Close or suspend the current view
+    viewToClose = m.__router_activeView
+    closePromise = Invalid
+    if rodash.getBoolean(viewToClose.route.routeConfig.keepAlive, "enabled") then
+        closePromise = suspendView(viewToClose)
+    else
+        closePromise = closeView(viewToClose)
+    end if
+
+    promises.chain(closePromise, viewToOpen).then(sub(_ as Dynamic, view as Dynamic)
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
         view.route.navigationState = rodash.merge(view.route.navigationState, {
-            fromSuspendedRoot: false
+            fromKeepAlive: false
             fromPopState: true
             fromPushState: false
             fromRedirect: false
@@ -87,6 +155,8 @@ end function
 ' @param {Object} options - The route config overrides
 ' @returns {Dynamic} - The result of the navigation
 function _navigateTo(path = "" as String, options = {} as Object) as Dynamic
+    if m.__router_navigationInProgress then return promises.reject({ message: "Navigation already in progress" })
+
     routeConfigOverrides = rodash.getAA(options, "routeConfigOverrides")
     navigationState = rodash.getAA(options, "navigationState")
     context = rodash.getAA(options, "context")
@@ -173,7 +243,7 @@ function _navigateTo(path = "" as String, options = {} as Object) as Dynamic
                 return promises.reject(message)
             end if
 
-            viewsToRemove = []
+            viewsToRemoveOnResolve = []
             if m.__router_activeView <> Invalid then
                 oldRoute = m.__router_activeView.route
 
@@ -217,10 +287,9 @@ function _navigateTo(path = "" as String, options = {} as Object) as Dynamic
                         return response
                     end function).toPromise()
                 else
-                    if newRoute.routeConfig.isRoot then
+                    if newRoute.routeConfig.clearStackOnResolve then
                         for each view in rodash.getNodeChildren(m.__router_viewTarget)
-                            ' print "view to remove", view
-                            viewsToRemove.push(view)
+                            viewsToRemoveOnResolve.push(view)
                         end for
                     end if
                 end if
@@ -231,7 +300,7 @@ function _navigateTo(path = "" as String, options = {} as Object) as Dynamic
                 fromPushState: true
             })
 
-            return addViewToStack(newRoute, viewsToRemove)
+            return addViewToStack(newRoute, viewsToRemoveOnResolve)
         end if
 
         message = { message: `Route "${newRoute.path}" not found` }
@@ -241,10 +310,14 @@ function _navigateTo(path = "" as String, options = {} as Object) as Dynamic
         })
 
         return promises.reject(message)
+    end function).catch(function(error as Dynamic) as Dynamic
+        m.__router_navigationInProgress = false
+        return promises.reject(error)
     end function).toPromise()
 end function
 
-' A public function to set the focus on the router' @param {Boolean} takeFocus - Whether to take focus or not
+' A public function to set the focus on the router
+' @param {Boolean} takeFocus - Whether to take focus or not
 ' @returns {Boolean} - Whether the active view handled the focus or not
 function _setFocus(takeFocus as Boolean) as Boolean
     response = false
@@ -269,7 +342,8 @@ end function
 '#region *** PRIVATE Guard Functions
 '*************************************************************************
 
-' Function to run guard checks' @param {Dynamic} route - The route to run the guard checks on
+' Function to run guard checks
+' @param {Dynamic} route - The route to run the guard checks on
 ' @returns {Dynamic} - The result of the guard checks
 function runGuardChecks(route as Dynamic) as Dynamic
     ' Run guard checks
@@ -341,6 +415,8 @@ function runGuardChecks(route as Dynamic) as Dynamic
                         toMerge.push({ navigationState: { fromRedirect: true } })
 
                         options = rodash.merge({}, toMerge)
+                        ' Reset flag so the redirect can start a fresh navigation
+                        m.__router_navigationInProgress = false
                         return promises.resolve({ allow: false, redirect: _navigateTo(redirectTo, options) })
                     end if
                 else
@@ -374,8 +450,9 @@ end function
 '#region *** PRIVATE View Stack Management Functions
 '*************************************************************************
 
-' Function to add a view to the view stack' @param {Dynamic} route - The route to add to the view stack
-' @param {Array} closeViews - The views to close
+' Function to add a view to the view stack
+' @param {Dynamic} route - The route to add to the view stack
+' @param {Array} closeViews - The views to close/suspend
 ' @returns {Dynamic} - The result of the view stack management
 function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
     ' An event triggered at the start of the Resolve phase of routing.
@@ -384,23 +461,23 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         route: route
     })
 
-    ' Look to see if the root view is suspended
-    suspendedRootView = Invalid
-    for each view in rodash.getNodeChildren(m.__router_suspendedViewTarget)
-        ' print "view.route.pattern", view.route.path, route.path
-        if view.route.path = route.path then
-            suspendedRootView = view
+    ' Look for a cached keepAlive view (stable key ignores query-string differences)
+    keepAliveView = Invalid
+
+    for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
+        if v.route.path = route.path then
+            keepAliveView = v
 
             route.navigationState = rodash.merge(route.navigationState, {
-                fromSuspendedRoot: true
+                fromKeepAlive: true
             })
             exit for
         end if
     end for
 
     toResolve = Invalid
-    if suspendedRootView <> Invalid then
-        view = suspendedRootView
+    if keepAliveView <> Invalid then
+        view = keepAliveView
         view.id = route.id
         view.route = route
         toResolve = promises.resolve(Invalid)
@@ -423,22 +500,52 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         toResolve = view@._beforeViewOpen({ route: route })
     end if
 
-    return promises.chain(toResolve, { view: view, closeViews: closeViews, fromSuspend: suspendedRootView <> Invalid }).then(function(response as Dynamic, internalContext as Dynamic) as Dynamic
+    return promises.chain(toResolve, { view: view, closeViews: closeViews, fromKeepAlive: keepAliveView <> Invalid }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
         view = internalContext.view
-        m.__router_viewTarget.appendChild(view)
-        view.reparent(m.__router_viewTarget, true) ' in the event the view was previously suspended
-        hideView(m.__router_activeView)
 
+        ' Ensure the view is in the visible stack (and reparent if it was previously suspended)
+        m.__router_viewTarget.appendChild(view)
+        view.reparent(m.__router_viewTarget, true)
+
+        ' Determine whether the active view is in the closeViews list.
+        isActiveInCloseViews = false
+        if m.__router_activeView <> Invalid then
+            for each cv in internalContext.closeViews
+                if cv.id = m.__router_activeView.id then
+                    isActiveInCloseViews = true
+                    exit for
+                end if
+            end for
+        end if
+
+        ' Build lifecycle promises to resolve before showing the new view.
         promisesToResolve = []
+
+        ' Handle the active view:
+        ' - keepAlive AND not in closeViews: suspend and move to keepAliveViewTarget (awaited)
+        ' - in closeViews: just hide; lifecycle is handled by the closeViews loop below
+        ' - otherwise: just hide
+        if m.__router_activeView <> Invalid then
+            if NOT isActiveInCloseViews AND rodash.getBoolean(m.__router_activeView.route.routeConfig.keepAlive, "enabled") then
+                promisesToResolve.push(suspendView(m.__router_activeView))
+            else
+                hideView(m.__router_activeView, false)
+            end if
+        end if
+
+        ' Close or suspend views in closeViews.
+        ' For keepAlive views: only call _onViewSuspend if this view IS the active view (first suspension).
+        ' Non-active keepAlive views are already in keepAliveViewTarget from prior forward navigation.
         if rodash.isNonEmptyArray(internalContext.closeViews) then
-            for each view in internalContext.closeViews
-                params = {
-                    route: view.route
-                }
-                if view.route.routeConfig.isRoot AND view.route.routeConfig.keepRootAlive then
-                    promisesToResolve.push(view@._onViewSuspend(params))
+            for each cv in internalContext.closeViews
+                params = { route: cv.route }
+
+                if rodash.getBoolean(cv.route.routeConfig.keepAlive, "enabled") then
+                    if m.__router_activeView <> Invalid AND cv.id = m.__router_activeView.id then
+                        promisesToResolve.push(cv@._onViewSuspend(params))
+                    end if
                 else
-                    promisesToResolve.push(view@._beforeViewClose(params))
+                    promisesToResolve.push(cv@._beforeViewClose(params))
                 end if
             end for
         end if
@@ -457,17 +564,19 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
             route: internalContext.view.route
         })
 
-        'now that all of the `beforeViewClose` promises have resolved, show the new view
-        return showView(internalContext.view, internalContext.fromSuspend)
+        'now that all lifecycle promises have resolved, show the new view
+        return showView(internalContext.view, internalContext.fromKeepAlive)
     end function).then(function(response as Dynamic, internalContext as Dynamic) as Dynamic
+        ' Remove/suspend views after the new view is visible.
+        ' keepAlive: reparent synchronously (_onViewSuspend already called above).
+        ' non-keepAlive: destroy.
         if rodash.isNonEmptyArray(internalContext.closeViews) then
-            for each view in internalContext.closeViews
-                if view.route.routeConfig.isRoot AND view.route.routeConfig.keepRootAlive then
-                    if hideView(view) AND view.reparent(m.__router_suspendedViewTarget, true) then
-                        m.__router_suspendedViewTarget.appendChild(view)
-                    end if
+            for each cv in internalContext.closeViews
+                if rodash.getBoolean(cv.route.routeConfig.keepAlive, "enabled") then
+                    hideView(cv, false)
+                    cv.reparent(m.__router_keepAliveViewTarget, true)
                 else
-                    if hideView(view) then rodash.removeNode(view)
+                    if hideView(cv, false) then rodash.removeNode(cv)
                 end if
             end for
         end if
@@ -478,14 +587,15 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
     end function).toPromise()
 end function
 
-' Function to close a view' @param {Dynamic} view - The view to close
+' Function to close a view
+' @param {Dynamic} view - The view to close
 ' @returns {Dynamic} - The result of the view close
 function closeView(view = Invalid as Dynamic) as Dynamic
     view.translation = [1000000, 100000]
     view.visible = false
 
-    return promises.onThen(view@._beforeViewClose({ route: view.route }), function(response as Dynamic, internalContext as Dynamic) as Dynamic
-        if hideView(internalContext.view) then
+    return promises.onThen(view@._beforeViewClose({ route: view.route }), function(_ as Dynamic, internalContext as Dynamic) as Dynamic
+        if hideView(internalContext.view, false) then
             rodash.removeNode(internalContext.view)
         end if
 
@@ -493,9 +603,24 @@ function closeView(view = Invalid as Dynamic) as Dynamic
     end function, { view: view })
 end function
 
+' Function to suspend a view (keepAlive)
+' @param {Dynamic} view - The view to suspend
+' @returns {Dynamic} - The result of the view suspend
+function suspendView(view = Invalid as Dynamic) as Dynamic
+    if NOT rodash.isNode(view) then return promises.reject({ message: "Invalid view" })
 
+    view.visible = false
+    view.translation = [10000, 10000]
 
-' Tells the view to hide and fire the onViewSuspend lifecycle method if onSuspend is true' @param {Object} view - The view to hide
+    return promises.onThen(view@._onViewSuspend({ route: view.route }), function(_ as Dynamic, ctx as Dynamic) as Dynamic
+        hideView(ctx.view, false)
+        ctx.view.reparent(m.__router_keepAliveViewTarget, true)
+        return true
+    end function, { view: view })
+end function
+
+' Tells the view to hide and fire the onViewSuspend lifecycle method if onSuspend is true
+' @param {Object} view - The view to hide
 ' @param {Boolean} onSuspend - Whether to fire the onViewSuspend lifecycle method
 function hideView(view as Object, onSuspend = false as Boolean) as Boolean
     success = rodash.isNode(view)
@@ -510,9 +635,15 @@ function hideView(view as Object, onSuspend = false as Boolean) as Boolean
     return success
 end function
 
-' Called when the focus chain of the router changes' @param {Object} event - The event object
+' Called when the focus chain of the router changes
+' @param {Object} event - The event object
 sub onFocusChildChanged(event as Object)
     inFocusChain = event.getData() <> Invalid
+
+    ' Don't update focus state mid-navigation: suspending/reparenting views causes transient
+    ' focus loss that would clear m.__router_focusRequestMade. showView.finally restores focus
+    ' once the new view is visible.
+    if m.__router_navigationInProgress then return
 
     if NOT m.__router_processingGoBack AND m.__router_activeView <> Invalid AND NOT inFocusChain AND m.__router_focusRequestMade <> inFocusChain then
         m.__router_focusRequestMade = inFocusChain
@@ -524,7 +655,8 @@ sub onFocusChildChanged(event as Object)
     m.__router_focusRequestMade = inFocusChain
 end sub
 
-' Tells the view to open and fire the handleFocus lifecycle method' @param {Object} view - The view to show
+' Tells the view to open and fire the handleFocus lifecycle method
+' @param {Object} view - The view to show
 ' @param {Boolean} onResume - Whether the view is being resumed
 function showView(view as Object, onResume = false as Boolean) as Dynamic
     if rodash.isNode(view) then
@@ -533,17 +665,14 @@ function showView(view as Object, onResume = false as Boolean) as Dynamic
         m.__router_activeView = view
 
         response = Invalid
-        params = {
-            route: view.route
-        }
+        params = { route: view.route }
         if onResume then
             response = view@._onViewResume(params)
         else
             response = view@._onViewOpen(params)
         end if
 
-        return promises.chain(response, { response: response, view: view }).finally(function(context as Dynamic) as Dynamic
-            ' print "View opened", m.__router_focusRequestMade
+        return promises.chain(response, { response: response, view: view, onResume: onResume }).finally(function(context as Dynamic) as Dynamic
             focusSuccess = context.view@._handleFocus({
                 routerFocused: m.__router_focusRequestMade
             })
@@ -551,6 +680,21 @@ function showView(view as Object, onResume = false as Boolean) as Dynamic
             ' Return focus to the top node if the view didn't handle focus
             if m.__router_focusRequestMade AND NOT focusSuccess then
                 m.top.setFocus(true)
+            end if
+
+            ' History updates should be based on navigation state, not onResume.
+            ' - fromPopState: pop history
+            ' - fromPushState: push history (including keepAlive resumes)
+            if context.view.route.navigationState.fromPopState then
+                m.__router_historyStack.pop()
+            else
+                if context.view.route.routeConfig.clearStackOnResolve then
+                    m.__router_historyStack = []
+                end if
+
+                if context.view.route.navigationState.fromPushState then
+                    m.__router_historyStack.push(context.view.route.path)
+                end if
             end if
 
             m.__router_processingGoBack = false
@@ -574,8 +718,8 @@ end function
 '#region *** PRIVATE Helper Functions
 '*************************************************************************
 
-
-' Helper function to create a route object' @param {Object} config - The configuration object
+' Helper function to create a route object
+' @param {Object} config - The configuration object
 ' @returns {Dynamic} - The result of the view open
 function createRouteObject(config = {} as Object) as Object
     return {
@@ -591,9 +735,16 @@ function createRouteObject(config = {} as Object) as Object
     }
 end function
 
-' Helper function to dispatch a router state' @param {String} stateType - The type of state to dispatch
+' Helper function to dispatch a router state
+' @param {String} stateType - The type of state to dispatch
 ' @param {Object} context - The context to pass to the state
 sub dispatchRouterState(stateType as String, context = {} as Dynamic)
+    if stateType = RouterState.NavigationStart then
+        m.__router_navigationInProgress = true
+    else if stateType = RouterState.NavigationEnd OR stateType = RouterState.NavigationError then
+        m.__router_navigationInProgress = false
+    end if
+
     update = {
         type: stateType
         id: rodash.getString(context, "route.id", context.id)
@@ -622,7 +773,8 @@ function createRouteSnapshot(route as Object) as Object
     }
 end function
 
-' Helper function to create a base context object' @returns {Object} - The base context object
+' Helper function to create a base context object
+' @returns {Object} - The base context object
 function createBaseContext() as Object
     return {}
 end function
@@ -630,13 +782,14 @@ end function
 function createBaseNavigationState() as Object
     return {
         fromRedirect: false
-        fromSuspendedRoot: false
+        fromKeepAlive: false
         fromPopState: false
         fromPushState: false
     }
 end function
 
-' Helper function to find a matching route' @param {String} path - The path to find a matching route for
+' Helper function to find a matching route
+' @param {String} path - The path to find a matching route for
 ' @param {Object} routes - The routes to search
 ' @returns {Dynamic} - The matching route
 function findMatchingRoute(path as String, routes as Object) as rokuRouter.RouteObject
@@ -658,22 +811,8 @@ function findMatchingRoute(path as String, routes as Object) as rokuRouter.Route
     queryParams = parseQueryString(queryString)
 
     ' ============================================================
-    ' 1) First check for exact matches (static paths)
-    ' ============================================================
-    for each routePath in routes
-        if normalizePath(routePath) = basePath then
-            return createRouteObject({
-                path: path
-                routeConfig: routes[routePath]
-                queryParams: queryParams
-                hash: hash
-            })
-        end if
-    end for
-
-    ' ============================================================
-    ' 2) Then check parameterized matches, but choose the
-    '    *most specific* match (most static segments)
+    ' Single-pass match: exact wins immediately; parameterized
+    ' tracks the best (most static segments) candidate.
     ' ============================================================
     bestMatchRoutePath = Invalid
     bestMatchParams = Invalid
@@ -682,9 +821,20 @@ function findMatchingRoute(path as String, routes as Object) as rokuRouter.Route
     pathParts = basePath.split("/")
 
     for each routePath in routes
-        routeParts = normalizePath(routePath).split("/")
+        normalizedRoutePath = normalizePath(routePath)
 
-        ' Must have same number of segments
+        ' Fast path: exact static match — return immediately
+        if normalizedRoutePath = basePath then
+            return createRouteObject({
+                path: path
+                routeConfig: routes[routePath]
+                queryParams: queryParams
+                hash: hash
+            })
+        end if
+
+        ' Parameterized match — segment count must align
+        routeParts = normalizedRoutePath.split("/")
         if routeParts.count() = pathParts.count() then
             matchedParams = {}
             isMatch = true
@@ -740,28 +890,24 @@ function findMatchingRoute(path as String, routes as Object) as rokuRouter.Route
     })
 end function
 
-
-' Helper Function to get the hash parameter from a URL' @param {String} url - The URL to get the hash parameter from
+' Helper Function to get the hash parameter from a URL
+' @param {String} url - The URL to get the hash parameter from
 ' @returns {String} - The hash parameter
 function getHashParam(url as String) as String
-    ' Check if the input URL is valid
     if rodash.isEmptyString(url) then
         return ""
     end if
 
-    ' Find the position of the # character in the URL
     hashIndex = rodash.stringIndexOf(url, "#")
-
-    ' If # is not found, return "Invalid"
     if hashIndex = -1 then
         return ""
     end if
 
-    ' Extract and return the substring after the #
     return url.mid(hashIndex + 1)
 end function
 
-' Helper function to normalize a path' @param {String} path - The path to normalize
+' Helper function to normalize a path
+' @param {String} path - The path to normalize
 ' @returns {String} - The normalized path
 function normalizePath(path as String) as String
     path = path.trim()
@@ -774,7 +920,8 @@ function normalizePath(path as String) as String
     return path
 end function
 
-' Helper function to parse a query string into an associative array' @param {Dynamic} queryString - The query string to parse
+' Helper function to parse a query string into an associative array
+' @param {Dynamic} queryString - The query string to parse
 ' @returns {Object} - The parsed query string
 function parseQueryString(queryString as Dynamic) as Object
     if NOT rodash.isNonEmptyString(queryString) then
@@ -797,11 +944,4 @@ end function
 '*************************************************************************
 '#endregion *** PRIVATE Helper Functions
 '*************************************************************************
-
-
-
-
-
-
-
 

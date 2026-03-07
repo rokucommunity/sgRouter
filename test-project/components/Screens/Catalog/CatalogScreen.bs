@@ -62,11 +62,11 @@ end function
 
 function onViewResume(params = {} as Object) as Dynamic
   ' If we are coming from a suspended root, jump to the first item
-  fromSuspendedRoot = params.route.navigationState.fromSuspendedRoot
-  if fromSuspendedRoot <> Invalid AND fromSuspendedRoot then
+  fromKeepAlive = params?.route?.navigationState?.fromKeepAlive
+  fromPopState = params?.route?.navigationState?.fromPopState
+  if fromKeepAlive <> Invalid AND fromKeepAlive AND fromPopState <> Invalid AND NOT fromPopState then
     m.rowList.jumpToRowItem = [0, 0]
   end if
-
   return promises.resolve(Invalid)
 end function
 
