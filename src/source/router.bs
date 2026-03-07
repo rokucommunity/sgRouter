@@ -21,7 +21,7 @@ namespace rokuRouter
         end if
 
         ' Validate the outlet
-        if rodash.isNode(routerObject) AND routerObject.hasField("__isRouter") AND rodash.isNode(params.outlet) AND params.outlet.hasField("__isOutlet") then
+        if rokuRouter.utils.isRouter(routerObject) AND rokuRouter.utils.isOutlet(params.outlet) then
             m.top.getScene().addFields({ __router: routerObject })
             return routerObject@._initialize(params)
         end if
@@ -82,12 +82,7 @@ namespace rokuRouter
         return m.top.getScene().__router
     end function
 
-    function searchForOutlet(parent = Invalid as Dynamic, depth = 0 as Integer) as Dynamic
-        ' Stop if too deep
-        if depth > 30 then
-            return Invalid
-        end if
-
+    function searchForOutlet(parent = Invalid as Dynamic) as Dynamic
         if parent = Invalid then
             parent = m.top
         end if
@@ -99,13 +94,10 @@ namespace rokuRouter
             if rodash.isNode(node) AND node.hasField("__isOutlet") then
                 outlet = node
             else
-                outlet = searchForOutlet(node, depth + 1)
+                'push all of this node's children to be searched in the future
+                nodes.append(rodash.getNodeChildren(node))
             end if
-
-            if outlet <> Invalid then
-                return outlet
-            end if
-        end for
+        end while
 
         return Invalid
     end function

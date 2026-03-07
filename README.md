@@ -58,7 +58,7 @@ Routes are typically configured in a routing module using an array of route obje
 #### Brighterscript - MainScene.bs
 ```brighterscript
 sub init()
-    ' initialize wherever you main outlet lives
+    ' initialize wherever your main outlet lives
     rokuRouter.initialize({outlet: m.top.findNode("myOutlet")})
 
     rokuRouter.addRoutes([
