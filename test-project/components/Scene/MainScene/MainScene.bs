@@ -49,7 +49,7 @@ sub init()
                 },
                 denyRedirect: "/"
         }] },
-        { pattern: "/details/:type/:id", component: "DetailsScreen", keepAlive: { enabled: true }, canActivate: [m.global.AuthManager] },
+        { pattern: "/details/:type/:id", component: "DetailsScreen", name: "DetailsView", keepAlive: { enabled: true }, canActivate: [m.global.AuthManager] },
         { pattern: "/details/:type/:id/cast", component: "CastDetailsScreen", canActivate: [m.global.AuthManager] },
         { pattern: "/:screenName", component: "DefaultScreen" }
     ])

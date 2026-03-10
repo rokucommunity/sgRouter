@@ -59,6 +59,19 @@ namespace tests
             })
         end function
 
+        @it("named routes are registered in the name map")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/movies/:id", component: "View", name: "movieDetail" },
+                { pattern: "/home", component: "View", name: "home" },
+            ])
+
+            routes = m.router@._getRoutes()
+            m.assertEqual(routes["/movies/:id"].name, "movieDetail")
+            m.assertEqual(routes["/home"].name, "home")
+        end function
+
 
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("navigateTo")
@@ -143,6 +156,103 @@ namespace tests
                     "GuardsCheckEnd"
                     "NavigationError"
                 ])
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("navigates to a named route with static pattern")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            m.router@._addRoutes([
+                { pattern: "/home", component: "View", name: "home" },
+            ])
+
+            navigatePromise = rokuRouter.navigateTo({ name: "home" }, { router: m.router })
+
+            return promises.chain(navigatePromise, m).then(function(_result, m)
+                m.assertEqual(m.router.routerState.url, "/home")
+            end function).finally(function(m = Invalid)
+                m.assertEqual(getGlobalAA().routerStatesHistory, [
+                    "NavigationStart"
+                    "RoutesRecognized"
+                    "GuardsCheckStart"
+                    "ActivationStart"
+                    "GuardsCheckEnd"
+                    "ResolveStart"
+                    "ActivationEnd"
+                    "ResolveEnd"
+                    "NavigationEnd"
+                ])
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("navigates to a named route with dynamic params")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            m.router@._addRoutes([
+                { pattern: "/movies/:id", component: "View", name: "movieDetail" },
+            ])
+
+            navigatePromise = rokuRouter.navigateTo({ name: "movieDetail", params: { id: 123 } }, { router: m.router })
+
+            return promises.chain(navigatePromise, m).then(function(_result, m)
+                m.assertEqual(m.router.routerState.url, "/movies/123")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("extra params beyond dynamic segments become query string")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            m.router@._addRoutes([
+                { pattern: "/movies/:id", component: "View", name: "movieDetail" },
+            ])
+
+            navigatePromise = rokuRouter.navigateTo({ name: "movieDetail", params: { id: 123, autoplay: true } }, { router: m.router })
+
+            return promises.chain(navigatePromise, m).then(function(_result, m)
+                m.assertEqual(m.router.routerState.url, "/movies/123?autoplay=true")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("unknown named route rejects immediately with no navigation events")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            m.router@._addRoutes([
+                { pattern: "/home", component: "View", name: "home" },
+            ])
+
+            navigatePromise = rokuRouter.navigateTo({ name: "doesNotExist" }, { router: m.router })
+
+            return promises.chain(navigatePromise, m).finally(function(m = Invalid)
+                m.assertEqual(getGlobalAA().routerStatesHistory, [])
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("missing required param rejects immediately with no navigation events")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            m.router@._addRoutes([
+                { pattern: "/movies/:id", component: "View", name: "movieDetail" },
+            ])
+
+            navigatePromise = rokuRouter.navigateTo({ name: "movieDetail" }, { router: m.router })
+
+            return promises.chain(navigatePromise, m).finally(function(m = Invalid)
+                m.assertEqual(getGlobalAA().routerStatesHistory, [])
             end function).toPromise()
         end function
 
