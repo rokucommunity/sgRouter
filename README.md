@@ -51,13 +51,15 @@ A **route** defines how your Roku app transitions between views. Routes are typi
 
 Each route object can include:
 
-| Property | Type | Required | Description |
-|-----------|-------|-----------|-------------|
-| `pattern` | string | ✅ | URL-like path pattern (`"/details/movies/:id"`) |
-| `component` | string | ✅ | View component to render (must extend `sgRouter_View`) |
-| `name` | string | ❌ | Stable identifier for named navigation (e.g. `"movieDetail"`) |
-| `clearStackOnResolve` | boolean | ❌ | Clears stack and resets breadcrumbs when true |
-| `canActivate` | function | ❌ | Guard function to control route access |
+| Property | Type | Required | Default | Description |
+|-----------|-------|-----------|---------|-------------|
+| `pattern` | string | ✅ | — | URL-like path pattern (`"/details/movies/:id"`) |
+| `component` | string | ✅ | `""` | View component to render (must extend `sgRouter_View`) |
+| `name` | string | ❌ | — | Stable identifier for named navigation (e.g. `"movieDetail"`) |
+| `allowReuse` | boolean | ❌ | `false` | When `true`, navigating to the same route calls `onRouteUpdate` instead of creating a new view |
+| `clearStackOnResolve` | boolean | ❌ | `false` | Destroys all previous views in the stack when this route activates |
+| `keepAlive` | object | ❌ | `{ enabled: false }` | When `enabled: true`, the view is suspended (not destroyed) when navigated away from |
+| `canActivate` | array | ❌ | `[]` | Guards that must allow navigation before the view is shown (see [Route Guards](#-route-guards)) |
 
 ### View Lifecycle Methods
 
@@ -158,13 +160,15 @@ end sub
 ```json
 {
   "id": "",
-  "type": "",
-  "state": {
+  "type": "NavigationStart | RoutesRecognized | GuardsCheckStart | GuardsCheckEnd | ActivationStart | ActivationEnd | ResolveStart | ResolveEnd | NavigationEnd | NavigationCancel | NavigationError",
+  "url": "",        // present on most events
+  "state": {        // present on NavigationEnd and related events
     "routeConfig": {},
     "queryParams": {},
     "routeParams": {},
     "hash": ""
-  }
+  },
+  "error": {}       // only present on NavigationError
 }
 ```
 
@@ -173,7 +177,7 @@ end sub
 ## 🔒 Route Guards
 
 Route guards let you **allow/deny navigation** based on custom logic (e.g., authentication, feature flags).
-A guard is simply any node that exposes a `canActivate` function.
+A guard is any node that exposes a `canActivate` function. The `canActivate` route config field takes an **array** of guards — all must pass before the view is shown.
 
 ### 1) Create a Guard (Auth example)
 **`components/Managers/Auth/AuthManager.xml`**
@@ -254,7 +258,7 @@ Your guard receives `currentRequest` with the full navigation context, useful fo
 
 ```brightscript
 function canActivate(currentRequest as Object) as Dynamic
-    ' currentRequest.route.pattern, currentRequest.routeParams, currentRequest.queryParams, currentRequest.hash, etc.
+    ' currentRequest.route.routeConfig.pattern, currentRequest.route.routeParams, currentRequest.route.queryParams, currentRequest.route.hash, etc.
     if currentRequest?.queryParams?.requiresPro = true and not m.top.isProUser then
         return sgRouter.createRedirectCommand("/upgrade")
     end if
@@ -372,10 +376,15 @@ Every view lifecycle receives a **route snapshot** so your screen logic can reac
 `params` is constructed by the router just before the lifecycle is called, and includes:
 
 ```text
-params.route.routeConfig   ' the matched route definition
-params.route.routeParams   ' extracted from pattern placeholders (e.g. :id, :type)
-params.route.queryParams   ' parsed from ?key=value pairs
-params.route.hash          ' parsed from #hash
+params.route.routeConfig          ' the matched route definition
+params.route.routeParams          ' extracted from pattern placeholders (e.g. :id, :type)
+params.route.queryParams          ' parsed from ?key=value pairs
+params.route.hash                 ' parsed from #hash
+params.route.navigationState      ' how this navigation was triggered:
+  .fromPushState                  '   true on normal forward navigation
+  .fromPopState                   '   true when arriving via goBack()
+  .fromKeepAlive                  '   true when a keepAlive view is resumed
+  .fromRedirect                   '   true when arrived via a canActivate guard redirect
 ```
 
 The snapshot is sourced from the URL you navigated to (e.g. `"/details/movies/42?page=2&sort=trending#grid=poster"`). The router builds this object and passes it into `beforeViewOpen(params)`, `onViewOpen(params)`, and `onRouteUpdate(params)`.
