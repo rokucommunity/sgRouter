@@ -756,6 +756,11 @@ end function
 ' Substitutes :param segments from params AA; leftover params become query string.
 ' Returns Invalid if a required :param segment has no matching value in params.
 function resolveNamedRoutePath(name as String, pattern as String, params = Invalid as Dynamic) as Dynamic
+    if params <> Invalid AND type(params) <> "roAssociativeArray" then
+        print "[WARN] Roku Router: params for route """ + name + """ must be an associative array, treating as missing"
+        params = Invalid
+    end if
+
     segments = pattern.split("/")
     resolvedSegments = []
     usedKeys = {}
