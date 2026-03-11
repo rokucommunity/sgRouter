@@ -1,7 +1,7 @@
 # Roku Router – Modern View Management for Roku Applications
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/734ca644-8d42-49be-84b3-2a717e6f3267" alt="roku-router-logo" width="120px" height="149px"/>
+  <img src="https://github.com/user-attachments/assets/734ca644-8d42-49be-84b3-2a717e6f3267" alt="sgRouter-logo" width="120px" height="149px"/>
 </p>
 
 <p align="center">
@@ -9,10 +9,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/TKSS-Software/roku-router/actions?query=branch%3Amaster+workflow%3Abuild"><img src="https://img.shields.io/github/actions/workflow/status/TKSS-Software/roku-router/build.yml?logo=github&branch=master" alt="Build Status"/></a>
-  <a href="https://npmcharts.com/compare/@tkss/roku-router?minimal=true"><img src="https://img.shields.io/npm/dm/@tkss/roku-router.svg?logo=npm" alt="Downloads"/></a>
-  <a href="https://www.npmjs.com/package/@tkss/roku-router"><img src="https://img.shields.io/npm/v/@tkss/roku-router.svg?logo=npm" alt="Version"/></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/TKSS-Software/roku-router.svg" alt="License"/></a>
+  <a href="https://github.com/rokucommunity/sgRouter/actions?query=branch%3Amaster+workflow%3Abuild"><img src="https://img.shields.io/github/actions/workflow/status/rokucommunity/sgRouter/build.yml?logo=github&branch=master" alt="Build Status"/></a>
+  <a href="https://npmcharts.com/compare/sgrouter?minimal=true"><img src="https://img.shields.io/npm/dm/sgrouter.svg?logo=npm" alt="Downloads"/></a>
+  <a href="https://www.npmjs.com/package/sgrouter"><img src="https://img.shields.io/npm/v/sgrouter.svg?logo=npm" alt="Version"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/rokucommunity/sgRouter.svg" alt="License"/></a>
   <a href="https://join.slack.com/t/rokudevelopers/shared_invite/zt-4vw7rg6v-NH46oY7hTktpRIBM_zGvwA"><img src="https://img.shields.io/badge/Slack-RokuCommunity-4A154B?logo=slack" alt="Slack Community"/></a>
 </p>
 
@@ -38,7 +38,7 @@ Install via **[ropm](https://www.npmjs.com/package/ropm)**:
 
 ```bash
 npx ropm install promises@npm:@rokucommunity/promises
-npx ropm install roku-router@npm:@tkss/roku-router
+npx ropm install sgrouter
 ```
 
 ---
@@ -63,12 +63,12 @@ Each route object can include:
 
 Views extending `rokuRouter_View` can define:
 
-- `beforeViewOpen` → Called before the view loads (e.g. async setup, API calls)  
-- `onViewOpen` → Called after previous view is closed/suspended  
-- `beforeViewClose` → Invoked before a view is destroyed  
-- `onViewSuspend` / `onViewResume` → Handle stack suspensions/resumptions  
-- `onRouteUpdate` → Fired when navigating to the same route with updated params/hash  
-- `handleFocus` → Defines focus handling when the view becomes active  
+- `beforeViewOpen` → Called before the view loads (e.g. async setup, API calls)
+- `onViewOpen` → Called after previous view is closed/suspended
+- `beforeViewClose` → Invoked before a view is destroyed
+- `onViewSuspend` / `onViewResume` → Handle stack suspensions/resumptions
+- `onRouteUpdate` → Fired when navigating to the same route with updated params/hash
+- `handleFocus` → Defines focus handling when the view becomes active
 
 ---
 
@@ -429,8 +429,8 @@ That structured object is then provided to the view lifecycles mentioned above. 
 ---
 ## 💬 Community & Support
 
-- Join the [Roku Developers Slack](https://join.slack.com/t/rokudevelopers/shared_invite/zt-4vw7rg6v-NH46oY7hTktpRIBM_zGvwA)  
-- Report issues or request features via [GitHub Issues](https://github.com/TKSS-Software/roku-router/issues)
+- Join the [Roku Developers Slack](https://join.slack.com/t/rokudevelopers/shared_invite/zt-4vw7rg6v-NH46oY7hTktpRIBM_zGvwA)
+- Report issues or request features via [GitHub Issues](https://github.com/rokucommunity/sgRouter/issues)
 
 ---
 
