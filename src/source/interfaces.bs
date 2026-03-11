@@ -1,5 +1,5 @@
 namespace rokuRouter
-    interface RouteObject
+    interface Route
         path as String ' /movies/3/play?autoPlayNext=true#browseWhileWatching
         routeConfig as rokuRouter.RouteConfig
         routeParams as Object ' { movieId: 3 }
@@ -32,8 +32,8 @@ namespace rokuRouter
     end interface
 
     interface RouteUpdateEvent
-        oldRoute as rokuRouter.RouteObject
-        newRoute as rokuRouter.RouteObject
+        oldRoute as rokuRouter.Route
+        newRoute as rokuRouter.Route
     end interface
 
     interface RouterStateEvent

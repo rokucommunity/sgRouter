@@ -800,7 +800,7 @@ end function
 ' Helper function to create a route object
 ' @param {Object} config - The configuration object
 ' @returns {Dynamic} - The result of the view open
-function createRouteObject(config = {} as Object) as Object
+function createRoute(config = {} as Object) as Object
     return {
         path: rodash.getString(config, "path")
         routeConfig: rodash.getAA(config, "routeConfig")
@@ -835,9 +835,9 @@ sub dispatchRouterState(stateType as String, context = {} as Dynamic)
     end if
 
     if rodash.isNode(context.route) then
-        route = context.route
-        update.state = createRouteSnapshot(route)
-        update.url = route.path
+        r = context.route
+        update.state = createRouteSnapshot(r)
+        update.url = r.path
     end if
 
     m.top.routerState = update
@@ -871,7 +871,7 @@ end function
 ' @param {String} path - The path to find a matching route for
 ' @param {Object} routes - The routes to search
 ' @returns {Dynamic} - The matching route
-function findMatchingRoute(path as String, routes as Object) as rokuRouter.RouteObject
+function findMatchingRoute(path as String, routes as Object) as rokuRouter.Route
     hash = getHashParam(path)
 
     if rodash.isNonEmptyString(hash) then
@@ -904,7 +904,7 @@ function findMatchingRoute(path as String, routes as Object) as rokuRouter.Route
 
         ' Fast path: exact static match — return immediately
         if normalizedRoutePath = basePath then
-            return createRouteObject({
+            return createRoute({
                 path: path
                 routeConfig: routes[routePath]
                 queryParams: queryParams
@@ -950,7 +950,7 @@ function findMatchingRoute(path as String, routes as Object) as rokuRouter.Route
 
     ' If we found at least one parameterized match, return the best one
     if bestMatchRoutePath <> Invalid then
-        return createRouteObject({
+        return createRoute({
             path: path
             routeConfig: routes[bestMatchRoutePath]
             routeParams: bestMatchParams
@@ -962,7 +962,7 @@ function findMatchingRoute(path as String, routes as Object) as rokuRouter.Route
     ' ============================================================
     ' 3) No match found; return a "not found" route object
     ' ============================================================
-    return createRouteObject({
+    return createRoute({
         path: path
         queryParams: queryParams
         hash: hash
