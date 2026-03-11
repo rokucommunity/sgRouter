@@ -161,8 +161,8 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
 end function
 
 ' Function to navigate to a specific route
-' @param {String} path - The path to navigate to
-' @param {Object} options - The route config overrides
+' @param {String|Object} path - The path to navigate to, or an AA for named routes: { name: String, params: Object }
+' @param {Object} options - The route config overrides and navigation options
 ' @returns {Dynamic} - The result of the navigation
 function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
     if m.__router_navigationInProgress then return promises.reject({ message: "Navigation already in progress" })
