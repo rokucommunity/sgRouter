@@ -1,11 +1,11 @@
-# Roku Router – Modern View Management for Roku Applications
+# sgRouter – Modern View Management for Roku Applications
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/734ca644-8d42-49be-84b3-2a717e6f3267" alt="sgRouter-logo" width="120px" height="149px"/>
+  <img width="210" height="229" alt="sgRouter logo" src="https://github.com/user-attachments/assets/998781d7-190d-4888-aeee-957aba00753a" />
 </p>
 
 <p align="center">
-  <em>A lightweight, modern router for Roku SceneGraph apps. Roku Router maps URL-style paths to components, manages view lifecycles, handles parameters, and supports route guards — enabling dynamic and seamless navigation experiences.</em>
+  <em>A lightweight, modern router for Roku SceneGraph apps. sgRouter maps URL-style paths to components, manages view lifecycles, handles parameters, and supports route guards — enabling dynamic and seamless navigation experiences.</em>
 </p>
 
 <p align="center">
@@ -347,10 +347,10 @@ If the name is not found or a required param is missing, a warning is printed an
 
 ```brightscript
 sgRouter.navigateTo({ name: "doesNotExist" })
-' [WARN] Roku Router: no route found with name "doesNotExist"
+' [WARN] sgRouter: no route found with name "doesNotExist"
 
 sgRouter.navigateTo({ name: "movieDetail" })
-' [WARN] Roku Router: missing required param "id" for route "movieDetail" (/movies/:id)
+' [WARN] sgRouter: missing required param "id" for route "movieDetail" (/movies/:id)
 ```
 
 Extra params beyond what the pattern requires are silently appended as query parameters — no warning is logged.
@@ -358,7 +358,7 @@ Extra params beyond what the pattern requires are silently appended as query par
 Duplicate names at registration time log a warning and the first registration wins:
 
 ```brightscript
-' [WARN] Roku Router: duplicate route name "home" — first registration wins (pattern: /)
+' [WARN] sgRouter: duplicate route name "home" — first registration wins (existing: /, ignored: /home)
 ```
 
 ---
