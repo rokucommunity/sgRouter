@@ -37,7 +37,7 @@ function sanitizeCode(filePath: string, optional = false) {
         .replace(/[ \t]*$/gm, '')
         //remove newlines or blank lines from start of file
         .replace(/^[\r\n\s]*/, '')
-        // replace createNode("Router" with createNode("roku_router"
+        // replace createNode("Router" with createNode("sgrouter_Router"
         .replace(/createNode\("Router"/g, 'createNode("sgrouter_Router"')
         .trim()
 
