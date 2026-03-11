@@ -1,5 +1,5 @@
 {
-  "name": "roku-router",
+  "name": "sgRouter",
   "version": "0.0.23",
   "description": "A router for the Roku platform",
   "main": "index.js",
@@ -9,7 +9,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/TKSS-Software/roku-router-router.git"
+    "url": "https://github.com/rokucommunity/sgRouter.git"
   },
   "scripts": {
     "preversion": "npm run build",
@@ -20,10 +20,10 @@
     "build-sample-project": "cd test-project && npx bsc",
     "createDataSet": "ts-node ./scripts/createDataSet.ts"
   },
-  "author": "TKSS Software",
+  "author": "Tyler Smith",
   "license": "MIT",
   "ropm": {
-    "packagePrefix": "rokuRouter",
+    "packagePrefix": "sgRouter",
     "packageRootDir": "dist",
     "rootDir": "src"
   },
@@ -53,6 +53,6 @@
   },
   "dependencies": {
     "promises": "npm:@rokucommunity/promises@^0.3.0",
-    "rodash": "npm:@tkss/rodash@^0.0.35"
+    "rodash": "npm:@/rodash@^0.0.35"
   }
 }
