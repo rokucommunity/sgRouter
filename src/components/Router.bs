@@ -75,7 +75,7 @@ sub _addRoutes(routes = [] as Object)
 
         if rodash.isNonEmptyString(merged.name) then
             if m.__router_nameMap[merged.name] <> Invalid then
-                print "[WARN] Roku Router: duplicate route name """ + merged.name + """ — first registration wins (pattern: """ + m.__router_nameMap[merged.name].pattern + """)"
+                print "[WARN] Roku Router: duplicate route name """ + merged.name + """ — first registration wins (existing: """ + m.__router_nameMap[merged.name].pattern + """, ignored: """ + merged.pattern + """)"
             else
                 m.__router_nameMap[merged.name] = merged
             end if
