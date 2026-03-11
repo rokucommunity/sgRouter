@@ -4,8 +4,8 @@ import "interfaces.bs"
 import "RouterState.bs"
 
 '************************
-'*** This namespace can be used inside any component that is a view, or child of a view
-'*** DO NOT USE THIS FILE OUTSIDE OF A VIEW COMPONENT, such as the main scene
+'*** This namespace can be used inside any component that is a view, or child of a view.
+'*** DO NOT USE THIS FILE OUTSIDE OF A VIEW COMPONENT, such as the main scene.
 '************************
 namespace sgRouter
 
