@@ -41,11 +41,11 @@ namespace rokuRouter
     ' This function is used to navigate to a different screen
     ' It will return a promise that will resolve when the navigation is complete
     ' @since 0.0.1
-    ' @param path - The path to navigate to
+    ' @param path - Either a literal path string (e.g. "/home") or an AA for named-route navigation.
     ' @param options - The options to pass to the router
     ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
     ' @return - A promise that will resolve when the navigation is complete
-    function navigateTo(path = "" as String, options = {} as Object) as Dynamic
+    function navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
         r = options.router <> Invalid ? options.router : rokuRouter.getRouter()
         if rodash.isNotInvalid(r) then
             return r@._navigateTo(path, options)

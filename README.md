@@ -20,12 +20,13 @@
 
 ## 🚀 Features
 
-- **URL-style navigation** for Roku apps  
-- **Dynamic routing** with parameter support  
-- **Route guards** (`canActivate`) for protected screens  
-- **View lifecycle hooks** for fine-grained control  
-- **Stack management** (root routes, suspension, resume)  
-- **Observable router state** for debugging or analytics  
+- **URL-style navigation** for Roku apps
+- **Dynamic routing** with parameter support
+- **Named routes** — navigate by intent, not by hardcoded path strings
+- **Route guards** (`canActivate`) for protected screens
+- **View lifecycle hooks** for fine-grained control
+- **Stack management** (root routes, suspension, resume)
+- **Observable router state** for debugging or analytics
 
 ---
 
@@ -54,6 +55,7 @@ Each route object can include:
 |-----------|-------|-----------|-------------|
 | `pattern` | string | ✅ | URL-like path pattern (`"/details/movies/:id"`) |
 | `component` | string | ✅ | View component to render (must extend `rokuRouter_View`) |
+| `name` | string | ❌ | Stable identifier for named navigation (e.g. `"movieDetail"`) |
 | `clearStackOnResolve` | boolean | ❌ | Clears stack and resets breadcrumbs when true |
 | `canActivate` | function | ❌ | Guard function to control route access |
 
@@ -288,6 +290,76 @@ end function
 
 > The included test project already wires up an `AuthManager` and protects `/shows`, `/movies`, and `/details/*` routes using `canActivate`.
 
+---
+
+## 🏷️ Named Routes
+
+Named routes let you navigate by a stable identifier instead of a hardcoded path string. If a path pattern ever changes, only the route config needs updating — every `navigateTo` call site remains valid.
+
+### 1) Add a `name` to your routes
+
+```brightscript
+rokuRouter.addRoutes([
+    { pattern: "/",                  component: "WelcomeScreen",  name: "home",        clearStackOnResolve: true },
+    { pattern: "/movies/:id",        component: "DetailsScreen",  name: "movieDetail"  },
+    { pattern: "/settings",          component: "SettingsView",   name: "settings"     },
+])
+```
+
+`name` is optional — routes without one continue to work exactly as before.
+
+### 2) Navigate by name
+
+Pass an associative array with a `name` key instead of a path string:
+
+```brightscript
+' Static route — no params needed
+rokuRouter.navigateTo({ name: "home" })
+
+' Dynamic route — params are substituted into :segment placeholders
+rokuRouter.navigateTo({ name: "movieDetail", params: { id: 42 } })
+' Resolves to: /movies/42
+
+' Extra params beyond what the pattern requires become query parameters
+rokuRouter.navigateTo({ name: "movieDetail", params: { id: 42, autoplay: true } })
+' Resolves to: /movies/42?autoplay=true
+```
+
+String arguments are unchanged — literal path logic runs with zero overhead:
+
+```brightscript
+rokuRouter.navigateTo("/movies/42")   ' still works exactly as before
+```
+
+### 3) Backend-driven navigation
+
+Named routes remove the need for client code to reconstruct URL strings from backend responses:
+
+```brightscript
+' Backend response: { screen: "movieDetail", id: 42 }
+response = m.global.ApiManager.getDeepLink()
+rokuRouter.navigateTo({ name: response.screen, params: { id: response.id } })
+```
+
+### 4) Error handling
+
+If the name is not found or a required param is missing, a warning is printed and navigation is cancelled. The history stack is unchanged and no lifecycle hooks are triggered.
+
+```brightscript
+rokuRouter.navigateTo({ name: "doesNotExist" })
+' [WARN] Roku Router: no route found with name "doesNotExist"
+
+rokuRouter.navigateTo({ name: "movieDetail" })
+' [WARN] Roku Router: missing required param "id" for route "movieDetail" (/movies/:id)
+```
+
+Extra params beyond what the pattern requires are silently appended as query parameters — no warning is logged.
+
+Duplicate names at registration time log a warning and the first registration wins:
+
+```brightscript
+' [WARN] Roku Router: duplicate route name "home" — first registration wins (pattern: /)
+```
 
 ---
 

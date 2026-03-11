@@ -8,6 +8,7 @@ sub init()
     m.__router_focusRequestMade = false
     m.__router_guardInstances = {}
     m.__router_historyStack = []
+    m.__router_nameMap = {}
     m.__router_navigationInProgress = false
     m.__router_outlet = Invalid
     m.__router_processingGoBack = false
@@ -45,6 +46,7 @@ sub _destroy(_ = Invalid as Dynamic)
     m.__router_focusRequestMade = false
     m.__router_guardInstances = {}
     m.__router_historyStack = []
+    m.__router_nameMap = {}
     m.__router_navigationInProgress = false
     m.__router_outlet = Invalid
     m.__router_processingGoBack = false
@@ -70,6 +72,14 @@ sub _addRoutes(routes = [] as Object)
             keepAlive: { enabled: false }
         }, route)
         m.__router_routes[route.pattern] = merged
+
+        if rodash.isNonEmptyString(merged.name) then
+            if m.__router_nameMap[merged.name] <> Invalid then
+                print "[WARN] Roku Router: duplicate route name """ + merged.name + """ — first registration wins (existing: """ + m.__router_nameMap[merged.name].pattern + """, ignored: """ + merged.pattern + """)"
+            else
+                m.__router_nameMap[merged.name] = merged
+            end if
+        end if
     end for
 end sub
 
@@ -151,11 +161,35 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
 end function
 
 ' Function to navigate to a specific route
-' @param {String} path - The path to navigate to
-' @param {Object} options - The route config overrides
+' @param {String|Object} path - The path to navigate to, or an AA for named routes: { name: String, params: Object }
+' @param {Object} options - The route config overrides and navigation options
 ' @returns {Dynamic} - The result of the navigation
-function _navigateTo(path = "" as String, options = {} as Object) as Dynamic
+function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
     if m.__router_navigationInProgress then return promises.reject({ message: "Navigation already in progress" })
+
+    if NOT rodash.isNonEmptyAA(path) AND NOT rodash.isNonEmptyString(path) then
+        return promises.reject({ message: "Invalid path" })
+    end if
+
+    ' Named route resolution: if path is an AA with a "name" key, resolve to a literal path string
+    if rodash.isAA(path) then
+        name = path.name
+        params = path.params
+        if NOT rodash.isNonEmptyString(name) then
+            print "[WARN] Roku Router: navigateTo AA arg must include a non-empty ""name"" key"
+            return promises.reject({ message: "navigateTo AA arg must include a non-empty ""name"" key" })
+        end if
+        if m.__router_nameMap[name] = Invalid then
+            print "[WARN] Roku Router: no route found with name """ + name + """"
+            return promises.reject({ message: "no route found with name """ + name + """" })
+        end if
+        routeConfig = m.__router_nameMap[name]
+        resolved = resolveNamedRoutePath(name, routeConfig.pattern, params)
+        if resolved = Invalid then
+            return promises.reject({ message: "missing required param for named route """ + name + """" })
+        end if
+        path = resolved
+    end if
 
     routeConfigOverrides = rodash.getAA(options, "routeConfigOverrides")
     navigationState = rodash.getAA(options, "navigationState")
@@ -717,6 +751,51 @@ end function
 '*************************************************************************
 '#region *** PRIVATE Helper Functions
 '*************************************************************************
+
+' Resolve a named route to a literal path string.
+' Substitutes :param segments from params AA; leftover params become query string.
+' Returns Invalid if a required :param segment has no matching value in params.
+function resolveNamedRoutePath(name as String, pattern as String, params = Invalid as Dynamic) as Dynamic
+    if params <> Invalid AND type(params) <> "roAssociativeArray" then
+        print "[WARN] Roku Router: params for route """ + name + """ must be an associative array, treating as missing"
+        params = Invalid
+    end if
+
+    segments = pattern.split("/")
+    resolvedSegments = []
+    usedKeys = {}
+
+    for each segment in segments
+        if left(segment, 1) = ":" then
+            paramKey = mid(segment, 2)
+            if params = Invalid OR params[paramKey] = Invalid then
+                print "[WARN] Roku Router: missing required param """ + paramKey + """ for route """ + name + """ (" + pattern + ")"
+                return Invalid
+            end if
+            resolvedSegments.push(params[paramKey].toStr())
+            usedKeys[paramKey] = true
+        else
+            resolvedSegments.push(segment)
+        end if
+    end for
+
+    resolvedPath = resolvedSegments.join("/")
+
+    ' Append unused params as query string
+    if params <> Invalid then
+        queryParts = []
+        for each key in params
+            if usedKeys[key] = Invalid then
+                queryParts.push(key + "=" + params[key].toStr())
+            end if
+        end for
+        if queryParts.count() > 0 then
+            resolvedPath = resolvedPath + "?" + queryParts.join("&")
+        end if
+    end if
+
+    return resolvedPath
+end function
 
 ' Helper function to create a route object
 ' @param {Object} config - The configuration object
