@@ -1,7 +1,7 @@
-# Roku Router – Modern View Management for Roku Applications
+# sgRouter – Modern View Management for Roku Applications
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/734ca644-8d42-49be-84b3-2a717e6f3267" alt="sgRouter-logo" width="120px" height="149px"/>
+  <img width="384" height="256" alt="sgRouter" src="https://github.com/user-attachments/assets/3da9783d-ab8f-469f-adad-5a07f3bb954d" />
 </p>
 
 <p align="center">
