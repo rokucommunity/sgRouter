@@ -17,7 +17,7 @@ end sub
 sub onItemSelected(event as Object)
     itemSelected = event.getRoSGNode().content.getChild(event.getData()[0]).getChild(event.getData()[1])
     path = `/details/${m.pageType}/${itemSelected.id}`
-    rokuRouter.navigateTo(path)
+    sgRouter.navigateTo(path)
 end sub
 
 function beforeViewOpen(params = Invalid as Dynamic) as Dynamic

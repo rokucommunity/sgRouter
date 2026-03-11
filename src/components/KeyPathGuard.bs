@@ -37,7 +37,7 @@ function canActivate(currentRequest = {} as Object) as Dynamic
     end if
 
     if rodash.isNonEmptyString(m.denyRedirect) then
-        return rokuRouter.createRedirectCommand(m.denyRedirect)
+        return sgRouter.createRedirectCommand(m.denyRedirect)
     end if
 
     return false

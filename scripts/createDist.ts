@@ -8,13 +8,13 @@ import * as path from 'path';
 const transpileDir = `${__dirname}/../dist/`;
 
 async function run() {
-    //sanize the code (remove namespace prefixes, de-indent some lines, etc)
+    //sanitize the code (remove namespace prefixes, de-indent some lines, etc)
     sanitizeCode(`${transpileDir}/source/router.brs`);
     sanitizeCode(`${transpileDir}/source/router.d.bs`, true);
 }
 
 /**
- * Sanize the code (remove namespace prefixes, de-indent some lines, etc)
+ * Sanitize the code (remove namespace prefixes, de-indent some lines, etc)
  */
 function sanitizeCode(filePath: string, optional = false) {
     if (optional && !fsExtra.pathExistsSync(filePath)) {
@@ -30,15 +30,15 @@ function sanitizeCode(filePath: string, optional = false) {
         //remove prefixes from function names
         .replace(/function\s*router\_/gi, 'function ')
         //remove prefixes from function calls
-        .replace(/rokurouter_/gi, '')
+        .replace(/sgrouter_/gi, '')
         //remove prefixes from namespaces
-        .replace(/\bnamespace rokurouter./gi, 'namespace ')
+        .replace(/\bnamespace sgrouter./gi, 'namespace ')
         //remove all trailing whitespace on each line
         .replace(/[ \t]*$/gm, '')
         //remove newlines or blank lines from start of file
         .replace(/^[\r\n\s]*/, '')
         // replace createNode("Router" with createNode("roku_router"
-        .replace(/createNode\("Router"/g, 'createNode("rokurouter_Router"')
+        .replace(/createNode\("Router"/g, 'createNode("sgrouter_Router"')
         .trim()
 
     //remove the leading and trailing namespace for the .d.bs file
@@ -46,7 +46,7 @@ function sanitizeCode(filePath: string, optional = false) {
         code = code
             //remove the first namespace declaration
             .replace(/^namespace.*\r?\n?/m, '')
-            //the first occurance of the `end namespace
+            //the first occurrence of the `end namespace
             .replace(/^end namespace.*\r?\n?/m, '')
     }
     fsExtra.outputFileSync(filePath, code, 'utf8');

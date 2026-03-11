@@ -75,7 +75,7 @@ sub onItemSelected(event as Object)
   contentType = "series"
   if m.pageType = "movies" then contentType = "movie"
 
-  rokuRouter.navigateTo({ name: "DetailsView", params: { type: contentType, id: itemSelected.id } })
+  sgRouter.navigateTo({ name: "DetailsView", params: { type: contentType, id: itemSelected.id } })
 end sub
 
 function handleFocus(data as Object) as Boolean

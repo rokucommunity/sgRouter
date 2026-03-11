@@ -83,7 +83,7 @@ function onKeyEvent(key = "" as String, press = false as Boolean) as Boolean
                 return true
             end if
         else if key = "back" then
-            return rokuRouter.setFocus({ focus: true })
+            return sgRouter.setFocus({ focus: true })
         end if
     end if
 

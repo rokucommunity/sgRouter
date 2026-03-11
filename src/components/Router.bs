@@ -871,7 +871,7 @@ end function
 ' @param {String} path - The path to find a matching route for
 ' @param {Object} routes - The routes to search
 ' @returns {Dynamic} - The matching route
-function findMatchingRoute(path as String, routes as Object) as rokuRouter.Route
+function findMatchingRoute(path as String, routes as Object) as sgRouter.Route
     hash = getHashParam(path)
 
     if rodash.isNonEmptyString(hash) then

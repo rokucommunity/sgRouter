@@ -1,12 +1,12 @@
-namespace rokuRouter
+namespace sgRouter
     interface Route
         path as String ' /movies/3/play?autoPlayNext=true#browseWhileWatching
-        routeConfig as rokuRouter.RouteConfig
+        routeConfig as sgRouter.RouteConfig
         routeParams as Object ' { movieId: 3 }
         queryParams as Object ' { autoPlayNext: true }
         hash as String ' browseWhileWatching
         id as String ' unique UUID per navigation
-        navigationState as rokuRouter.NavigationState
+        navigationState as sgRouter.NavigationState
         context as Object ' arbitrary caller-provided data
     end interface
 
@@ -17,7 +17,7 @@ namespace rokuRouter
         optional allowReuse as Boolean ' call onRouteUpdate instead of creating a new view
         optional canActivate as Dynamic
         optional clearStackOnResolve as Boolean ' clear the view stack when this route is activated
-        optional keepAlive as rokuRouter.KeepAliveConfig
+        optional keepAlive as sgRouter.KeepAliveConfig
     end interface
 
     interface KeepAliveConfig
@@ -32,8 +32,8 @@ namespace rokuRouter
     end interface
 
     interface RouteUpdateEvent
-        oldRoute as rokuRouter.Route
-        newRoute as rokuRouter.Route
+        oldRoute as sgRouter.Route
+        newRoute as sgRouter.Route
     end interface
 
     interface RouterStateEvent
