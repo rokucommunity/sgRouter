@@ -358,7 +358,7 @@ Extra params beyond what the pattern requires are silently appended as query par
 Duplicate names at registration time log a warning and the first registration wins:
 
 ```brightscript
-' [WARN] sgRouter: duplicate route name "home" — first registration wins (pattern: /)
+' [WARN] sgRouter: duplicate route name "home" — first registration wins (existing: /, ignored: /home)
 ```
 
 ---
