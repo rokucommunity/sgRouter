@@ -1,5 +1,5 @@
 {
-  "name": "sgRouter",
+  "name": "sgrouter",
   "version": "0.0.23",
   "description": "A router for the Roku platform",
   "main": "index.js",
@@ -9,10 +9,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/rokucommunity/sgRouter.git"
+    "url": "https://github.com/rokucommunity/sgRouter"
   },
   "scripts": {
-    "preversion": "npm run build",
+    "preversion": "npx ropm copy && npm run build",
     "build": "npm run compile && ts-node ./scripts/createDist.ts",
     "build-tests": "npm run compile -- --project tests/bsconfig.json",
     "compile": "npx bsc",
