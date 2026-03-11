@@ -25,7 +25,7 @@
 - **Named routes** — navigate by intent, not by hardcoded path strings
 - **Route guards** (`canActivate`) for protected screens
 - **View lifecycle hooks** for fine-grained control
-- **Stack management** (root routes, suspension, resume)
+- **Stack management** (navigation, suspension, resume)
 - **Observable router state** for debugging or analytics
 
 ---
@@ -93,8 +93,8 @@ sub init()
 
     sgRouter.addRoutes([
         { pattern: "/", component: "WelcomeScreen" },
-        { pattern: "/shows", component: "CatalogScreen", root: true },
-        { pattern: "/movies", component: "CatalogScreen", root: true },
+        { pattern: "/shows", component: "CatalogScreen", clearStackOnResolve: true },
+        { pattern: "/movies", component: "CatalogScreen", clearStackOnResolve: true },
         { pattern: "/details/series/:id", component: "DetailsScreen" },
         { pattern: "/details/series/:id/cast", component: "CastDetailsScreen" },
         { pattern: "/details/movies/:id", component: "DetailsScreen" },
