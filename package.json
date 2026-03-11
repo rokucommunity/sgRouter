@@ -28,24 +28,15 @@
     "rootDir": "src"
   },
   "devDependencies": {
-    "@jsdoc/salty": "^0.2.8",
     "@types/fs-extra": "^9.0.13",
     "@types/lodash": "^4.17.13",
     "@types/node": "^18.7.16",
-    "better-docs": "^2.7.3",
-    "braintree-jsdoc-template": "^3.3.0",
     "brighterscript": "^0.67.5",
-    "brighterscript-jsdocs-plugin": "^0.7.3",
-    "bsc-plugin-inline-annotation": "https://github.com/rokucommunity/bsc-plugin-inline-annotation/releases/download/v0.0.0-packages/bsc-plugin-inline-annotation-1.0.0-plugin-logic.20241003135359.tgz",
-    "concat": "^1.0.3",
-    "copyfiles": "^2.4.1",
     "dotenv": "^16.4.5",
     "fast-glob": "^3.2.12",
     "fs-extra": "^10.1.0",
-    "lodash": "^4.17.21",
-    "merge-files": "^0.1.2",
+    "lodash": "^4.17.23",
     "node-fetch": "^2.7.0",
-    "replace-in-files": "^3.0.0",
     "rooibos-roku": "^5.15.4",
     "ropm": "^0.10.25",
     "ts-node": "^10.9.1",
@@ -53,6 +44,6 @@
   },
   "dependencies": {
     "promises": "npm:@rokucommunity/promises@^0.3.0",
-    "rodash": "npm:@/rodash@^0.0.35"
+    "rodash": "npm:@tkss/rodash@^0.0.35"
   }
 }
