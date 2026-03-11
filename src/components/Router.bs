@@ -167,8 +167,12 @@ end function
 function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
     if m.__router_navigationInProgress then return promises.reject({ message: "Navigation already in progress" })
 
+    if NOT rodash.isNonEmptyAA(path) AND NOT rodash.isNonEmptyString(path) then
+        return promises.reject({ message: "Invalid path" })
+    end if
+
     ' Named route resolution: if path is an AA with a "name" key, resolve to a literal path string
-    if type(path) = "roAssociativeArray" then
+    if rodash.isAA(path) then
         name = path.name
         params = path.params
         if NOT rodash.isNonEmptyString(name) then
