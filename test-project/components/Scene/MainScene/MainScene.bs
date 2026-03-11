@@ -2,7 +2,7 @@ import "pkg:/source/router.bs"
 
 sub init()
     'initialize the router
-    rokuRouter.initialize({
+    sgRouter.initialize({
         outlet: m.top.findNode("outlet")
     })
 
@@ -29,14 +29,14 @@ sub init()
     m.global.AuthManager.observeField("isLoggedIn", "onAuthManagerIsLoggedInChanged")
 
     ' initialize the main menu
-    m.mainMenu.router = rokuRouter.getRouter()
+    m.mainMenu.router = sgRouter.getRouter()
     m.mainMenu@.initialize()
 
     ' observe the routerState field on the router
-    rokuRouter.getRouter().observeField("routerState", "onRouterStateChanged")
+    sgRouter.getRouter().observeField("routerState", "onRouterStateChanged")
 
     ' add the routes to the router
-    rokuRouter.addRoutes([
+    sgRouter.addRoutes([
         { pattern: "/", component: "WelcomeScreen", clearStackOnResolve: true },
         { pattern: "/shows", component: "CatalogScreen", clearStackOnResolve: true, canActivate: [m.global.AuthManager] },
         { pattern: "/movies", component: "CatalogScreen", clearStackOnResolve: true, keepAlive: { enabled: true }, canActivate: [{
@@ -55,18 +55,18 @@ sub init()
     ])
 
     ' navigate to the first screen
-    rokuRouter.navigateTo("/#firstLoad=true")
+    sgRouter.navigateTo("/#firstLoad=true")
 
     ' set the focus to the router
-    rokuRouter.setFocus({ focus: true })
+    sgRouter.setFocus({ focus: true })
 end sub
 
 ' This function is called when the isLoggedIn field on the AuthManager changes
 sub onAuthManagerIsLoggedInChanged(event as Object)
     if event.getData() then
-        rokuRouter.navigateTo("/shows")
+        sgRouter.navigateTo("/shows")
     else
-        rokuRouter.navigateTo("/")
+        sgRouter.navigateTo("/")
     end if
 end sub
 
@@ -101,7 +101,7 @@ function onKeyEvent(key = "" as String, press = false as Boolean) as Boolean
             if m.mainMenu.visible then m.mainMenu.setFocus(true)
             return true
         else if key = "right" then
-            if NOT rokuRouter.setFocus({ focus: true }) then
+            if NOT sgRouter.setFocus({ focus: true }) then
                 if m.mainMenu.visible then m.mainMenu.setFocus(true)
             end if
             return true

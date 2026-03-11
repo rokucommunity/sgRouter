@@ -54,14 +54,14 @@ Each route object can include:
 | Property | Type | Required | Description |
 |-----------|-------|-----------|-------------|
 | `pattern` | string | ✅ | URL-like path pattern (`"/details/movies/:id"`) |
-| `component` | string | ✅ | View component to render (must extend `rokuRouter_View`) |
+| `component` | string | ✅ | View component to render (must extend `sgRouter_View`) |
 | `name` | string | ❌ | Stable identifier for named navigation (e.g. `"movieDetail"`) |
 | `clearStackOnResolve` | boolean | ❌ | Clears stack and resets breadcrumbs when true |
 | `canActivate` | function | ❌ | Guard function to control route access |
 
 ### View Lifecycle Methods
 
-Views extending `rokuRouter_View` can define:
+Views extending `sgRouter_View` can define:
 
 - `beforeViewOpen` → Called before the view loads (e.g. async setup, API calls)
 - `onViewOpen` → Called after previous view is closed/suspended
@@ -77,10 +77,10 @@ Views extending `rokuRouter_View` can define:
 ### **MainScene.xml**
 ```xml
 <component name="MainScene" extends="Scene">
-    <script type="text/brightscript" uri="pkg:/source/roku_modules/rokurouter/router.brs" />
+    <script type="text/brightscript" uri="pkg:/source/roku_modules/sgrouter/router.brs" />
     <script type="text/brightscript" uri="MainScene.bs" />
     <children>
-        <rokuRouter_Outlet id="myOutlet" />
+        <sgRouter_Outlet id="myOutlet" />
     </children>
 </component>
 ```
@@ -89,9 +89,9 @@ Views extending `rokuRouter_View` can define:
 ```brightscript
 sub init()
     ' Initialize the router at your main outlet
-    rokuRouter.initialize({ outlet: m.top.findNode("myOutlet") })
+    sgRouter.initialize({ outlet: m.top.findNode("myOutlet") })
 
-    rokuRouter.addRoutes([
+    sgRouter.addRoutes([
         { pattern: "/", component: "WelcomeScreen" },
         { pattern: "/shows", component: "CatalogScreen", root: true },
         { pattern: "/movies", component: "CatalogScreen", root: true },
@@ -102,10 +102,10 @@ sub init()
         { pattern: "/:screenName", component: "DefaultScreen" }
     ])
 
-    rokuRouter.navigateTo("/") ' Go to the welcome view
+    sgRouter.navigateTo("/") ' Go to the welcome view
 
     ' set the focus to the router
-    rokuRouter.setFocus({ focus: true })
+    sgRouter.setFocus({ focus: true })
 end sub
 ```
 
@@ -115,7 +115,7 @@ end sub
 
 ### **WelcomeScreen.xml**
 ```xml
-<component name="WelcomeScreen" extends="rokuRouter_View">
+<component name="WelcomeScreen" extends="sgRouter_View">
     <script type="text/brightscript" uri="pkg:/source/roku_modules/promises/promises.brs" />
     <script type="text/brightscript" uri="WelcomeScreen.bs" />
     <children>
@@ -145,7 +145,7 @@ You can observe `routerState` for debugging or analytics:
 
 ```brightscript
 sub init()
-    rokuRouter.getRouter().observeField("routerState", "onRouterStateChanged")
+    sgRouter.getRouter().observeField("routerState", "onRouterStateChanged")
 end sub
 
 sub onRouterStateChanged(event as Object)
@@ -205,7 +205,7 @@ function canActivate(currentRequest = {} as Object) as Dynamic
     m.top.getScene().dialog = dialog
 
     ' Redirect unauthenticated users (e.g., to home or login)
-    return rokuRouter.createRedirectCommand("/login")
+    return sgRouter.createRedirectCommand("/login")
 end function
 ```
 
@@ -229,7 +229,7 @@ m.global.AuthManager.observeField("isLoggedIn", "onAuthManagerIsLoggedInChanged"
 Attach one or more guards to any route using the `canActivate` array:
 
 ```brightscript
-rokuRouter.addRoutes([
+sgRouter.addRoutes([
     { pattern: "/", component: "WelcomeScreen", clearStackOnResolve: true },
     { pattern: "/login", component: "LoginScreen" },
 
@@ -246,7 +246,7 @@ rokuRouter.addRoutes([
 - **`true`** → allow navigation
 - **`false`** → block navigation (stay on current view)
 - **`RedirectCommand`** → redirect elsewhere without showing the target route
-  - Create via `rokuRouter.createRedirectCommand("/somewhere")`
+  - Create via `sgRouter.createRedirectCommand("/somewhere")`
 
 ### 5) Accessing the Current Request (optional)
 
@@ -256,7 +256,7 @@ Your guard receives `currentRequest` with the full navigation context, useful fo
 function canActivate(currentRequest as Object) as Dynamic
     ' currentRequest.route.pattern, currentRequest.routeParams, currentRequest.queryParams, currentRequest.hash, etc.
     if currentRequest?.queryParams?.requiresPro = true and not m.top.isProUser then
-        return rokuRouter.createRedirectCommand("/upgrade")
+        return sgRouter.createRedirectCommand("/upgrade")
     end if
     return true
 end function
@@ -272,7 +272,7 @@ function canActivate(currentRequest as Object) as Dynamic
     if m.global?.features[feature] = true then
         return true
     end if
-    return rokuRouter.createRedirectCommand("/")
+    return sgRouter.createRedirectCommand("/")
 end function
 ```
 
@@ -281,11 +281,11 @@ end function
 - Toggle login in development: `m.global.AuthManager.isLoggedIn = true`
 - Verify redirects by attempting to navigate to a protected route while logged out:
   ```brightscript
-  rokuRouter.navigateTo("/shows")
+  sgRouter.navigateTo("/shows")
   ```
 - Listen to router state changes to confirm block/redirect behavior:
   ```brightscript
-  rokuRouter.getRouter().observeField("routerState", "onRouterStateChanged")
+  sgRouter.getRouter().observeField("routerState", "onRouterStateChanged")
   ```
 
 > The included test project already wires up an `AuthManager` and protects `/shows`, `/movies`, and `/details/*` routes using `canActivate`.
@@ -299,7 +299,7 @@ Named routes let you navigate by a stable identifier instead of a hardcoded path
 ### 1) Add a `name` to your routes
 
 ```brightscript
-rokuRouter.addRoutes([
+sgRouter.addRoutes([
     { pattern: "/",                  component: "WelcomeScreen",  name: "home",        clearStackOnResolve: true },
     { pattern: "/movies/:id",        component: "DetailsScreen",  name: "movieDetail"  },
     { pattern: "/settings",          component: "SettingsView",   name: "settings"     },
@@ -314,21 +314,21 @@ Pass an associative array with a `name` key instead of a path string:
 
 ```brightscript
 ' Static route — no params needed
-rokuRouter.navigateTo({ name: "home" })
+sgRouter.navigateTo({ name: "home" })
 
 ' Dynamic route — params are substituted into :segment placeholders
-rokuRouter.navigateTo({ name: "movieDetail", params: { id: 42 } })
+sgRouter.navigateTo({ name: "movieDetail", params: { id: 42 } })
 ' Resolves to: /movies/42
 
 ' Extra params beyond what the pattern requires become query parameters
-rokuRouter.navigateTo({ name: "movieDetail", params: { id: 42, autoplay: true } })
+sgRouter.navigateTo({ name: "movieDetail", params: { id: 42, autoplay: true } })
 ' Resolves to: /movies/42?autoplay=true
 ```
 
 String arguments are unchanged — literal path logic runs with zero overhead:
 
 ```brightscript
-rokuRouter.navigateTo("/movies/42")   ' still works exactly as before
+sgRouter.navigateTo("/movies/42")   ' still works exactly as before
 ```
 
 ### 3) Backend-driven navigation
@@ -338,7 +338,7 @@ Named routes remove the need for client code to reconstruct URL strings from bac
 ```brightscript
 ' Backend response: { screen: "movieDetail", id: 42 }
 response = m.global.ApiManager.getDeepLink()
-rokuRouter.navigateTo({ name: response.screen, params: { id: response.id } })
+sgRouter.navigateTo({ name: response.screen, params: { id: response.id } })
 ```
 
 ### 4) Error handling
@@ -346,10 +346,10 @@ rokuRouter.navigateTo({ name: response.screen, params: { id: response.id } })
 If the name is not found or a required param is missing, a warning is printed and navigation is cancelled. The history stack is unchanged and no lifecycle hooks are triggered.
 
 ```brightscript
-rokuRouter.navigateTo({ name: "doesNotExist" })
+sgRouter.navigateTo({ name: "doesNotExist" })
 ' [WARN] Roku Router: no route found with name "doesNotExist"
 
-rokuRouter.navigateTo({ name: "movieDetail" })
+sgRouter.navigateTo({ name: "movieDetail" })
 ' [WARN] Roku Router: missing required param "id" for route "movieDetail" (/movies/:id)
 ```
 

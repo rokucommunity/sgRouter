@@ -36,7 +36,7 @@ function beforeViewClose(params = {} as Object) as Dynamic
     return promises.resolve(Invalid)
 end function
 
-function _onRouteUpdate(event as rokuRouter.RouteUpdateEvent) as Dynamic
+function _onRouteUpdate(event as sgRouter.RouteUpdateEvent) as Dynamic
     return promises.chain(onRouteUpdate(event), event).then(function(response as Dynamic, event as Dynamic) as Dynamic
         return response
     end function).toPromise()

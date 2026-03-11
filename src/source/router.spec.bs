@@ -10,8 +10,8 @@ namespace tests
 
     @async
     @SGNode("Group")
-    @suite("rokuRouter namespace")
-    class rokuRouter extends rooibos.BaseTestSuite 'bs:disable-line 1001 LINT1001
+    @suite("sgRouter namespace")
+    class sgRouter extends rooibos.BaseTestSuite 'bs:disable-line 1001 LINT1001
         private router = createObject("roSGNode", "Router")
         private outlet = createObject("roSGNode", "Outlet")
 
@@ -88,7 +88,7 @@ namespace tests
                 { pattern: "/beta", component: "View" },
             ])
 
-            navigatePromise = rokuRouter.navigateTo("/alpha", { router: m.router })
+            navigatePromise = sgRouter.navigateTo("/alpha", { router: m.router })
 
             'navigate to the first route
             return promises.chain(navigatePromise, m).then(function(_result, m)
@@ -122,7 +122,7 @@ namespace tests
                 { pattern: "/beta", component: "View" },
             ])
 
-            navigatePromise = rokuRouter.navigateTo("/charlie", { router: m.router })
+            navigatePromise = sgRouter.navigateTo("/charlie", { router: m.router })
 
             'navigate to the first route
             return promises.chain(navigatePromise, m).finally(function(m = Invalid)
@@ -144,7 +144,7 @@ namespace tests
                 { pattern: "/alpha" }
             ])
 
-            navigatePromise = rokuRouter.navigateTo("/alpha", { router: m.router })
+            navigatePromise = sgRouter.navigateTo("/alpha", { router: m.router })
 
             'navigate to the first route
             return promises.chain(navigatePromise, m).finally(function(m = Invalid)
@@ -169,7 +169,7 @@ namespace tests
                 { pattern: "/home", component: "View", name: "home" },
             ])
 
-            navigatePromise = rokuRouter.navigateTo({ name: "home" }, { router: m.router })
+            navigatePromise = sgRouter.navigateTo({ name: "home" }, { router: m.router })
 
             return promises.chain(navigatePromise, m).then(function(_result, m)
                 m.assertEqual(m.router.routerState.url, "/home")
@@ -198,7 +198,7 @@ namespace tests
                 { pattern: "/movies/:id", component: "View", name: "movieDetail" },
             ])
 
-            navigatePromise = rokuRouter.navigateTo({ name: "movieDetail", params: { id: 123 } }, { router: m.router })
+            navigatePromise = sgRouter.navigateTo({ name: "movieDetail", params: { id: 123 } }, { router: m.router })
 
             return promises.chain(navigatePromise, m).then(function(_result, m)
                 m.assertEqual(m.router.routerState.url, "/movies/123")
@@ -215,7 +215,7 @@ namespace tests
                 { pattern: "/movies/:id", component: "View", name: "movieDetail" },
             ])
 
-            navigatePromise = rokuRouter.navigateTo({ name: "movieDetail", params: { id: 123, autoplay: true } }, { router: m.router })
+            navigatePromise = sgRouter.navigateTo({ name: "movieDetail", params: { id: 123, autoplay: true } }, { router: m.router })
 
             return promises.chain(navigatePromise, m).then(function(_result, m)
                 m.assertEqual(m.router.routerState.url, "/movies/123?autoplay=true")
@@ -232,7 +232,7 @@ namespace tests
                 { pattern: "/home", component: "View", name: "home" },
             ])
 
-            navigatePromise = rokuRouter.navigateTo({ name: "doesNotExist" }, { router: m.router })
+            navigatePromise = sgRouter.navigateTo({ name: "doesNotExist" }, { router: m.router })
 
             return promises.chain(navigatePromise, m).finally(function(m = Invalid)
                 m.assertEqual(getGlobalAA().routerStatesHistory, [])
@@ -249,7 +249,7 @@ namespace tests
                 { pattern: "/movies/:id", component: "View", name: "movieDetail" },
             ])
 
-            navigatePromise = rokuRouter.navigateTo({ name: "movieDetail" }, { router: m.router })
+            navigatePromise = sgRouter.navigateTo({ name: "movieDetail" }, { router: m.router })
 
             return promises.chain(navigatePromise, m).finally(function(m = Invalid)
                 m.assertEqual(getGlobalAA().routerStatesHistory, [])
@@ -263,7 +263,7 @@ namespace tests
 
         @it("returns false when there is no history")
         function _() 'bs:disable-line 1026 LINT1026
-            result = rokuRouter.goBack({ router: m.router })
+            result = sgRouter.goBack({ router: m.router })
             m.assertFalse(result)
         end function
 
@@ -274,8 +274,8 @@ namespace tests
             m.router@._addRoutes([
                 { pattern: "/alpha", component: "View" }
             ])
-            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
-                result = rokuRouter.goBack({ router: m.router })
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                result = sgRouter.goBack({ router: m.router })
                 m.assertFalse(result)
             end function).toPromise()
         end function
@@ -288,10 +288,10 @@ namespace tests
                 { pattern: "/alpha", component: "View" }
                 { pattern: "/beta", component: "View" }
             ])
-            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
-                return rokuRouter.navigateTo("/beta", { router: m.router })
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
             end function).then(function(_, m)
-                result = rokuRouter.goBack({ router: m.router })
+                result = sgRouter.goBack({ router: m.router })
                 m.assertTrue(result)
             end function).toPromise()
         end function
@@ -304,13 +304,13 @@ namespace tests
                 { pattern: "/alpha", component: "View" }
                 { pattern: "/beta", component: "View" }
             ])
-            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
-                return rokuRouter.navigateTo("/beta", { router: m.router })
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
             end function).then(function(_, m)
                 ' Start a new navigation (sets navigationInProgress = true)
-                rokuRouter.navigateTo("/alpha", { router: m.router })
+                sgRouter.navigateTo("/alpha", { router: m.router })
                 ' goBack should be blocked
-                result = rokuRouter.goBack({ router: m.router })
+                result = sgRouter.goBack({ router: m.router })
                 m.assertFalse(result)
             end function).toPromise()
         end function
@@ -329,11 +329,11 @@ namespace tests
                 { pattern: "/root", component: "View", clearStackOnResolve: true }
             ])
             viewTarget = m.outlet.findNode("viewTarget")
-            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
-                return rokuRouter.navigateTo("/beta", { router: m.router })
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
             end function).then(function(_, m)
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 2)
-                return rokuRouter.navigateTo("/root", { router: m.router })
+                return sgRouter.navigateTo("/root", { router: m.router })
             end function).then(function(_, m)
                 ' Only the root view should remain
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
@@ -349,10 +349,10 @@ namespace tests
                 { pattern: "/beta", component: "View", keepAlive: { enabled: true } }
                 { pattern: "/root", component: "View", clearStackOnResolve: true }
             ])
-            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
-                return rokuRouter.navigateTo("/beta", { router: m.router })
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
             end function).then(function(_, m)
-                return rokuRouter.navigateTo("/root", { router: m.router })
+                return sgRouter.navigateTo("/root", { router: m.router })
             end function).then(function(_, m)
                 ' /root is in viewTarget, /beta is preserved in keepAliveViewTarget, /alpha destroyed
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
@@ -372,13 +372,13 @@ namespace tests
                 { pattern: "/alpha", component: "View", keepAlive: { enabled: true }, clearStackOnResolve: true }
                 { pattern: "/beta", component: "View", clearStackOnResolve: true }
             ])
-            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
                 ' Navigate away — /alpha should be suspended into keepAliveViewTarget
-                return rokuRouter.navigateTo("/beta", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
             end function).then(function(_, m)
                 m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
                 ' Navigate back to /alpha — should resume from keepAliveViewTarget
-                return rokuRouter.navigateTo("/alpha", { router: m.router })
+                return sgRouter.navigateTo("/alpha", { router: m.router })
             end function).then(function(_, m)
                 ' /alpha is active again; keepAliveViewTarget should be empty
                 m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 0)
@@ -399,10 +399,10 @@ namespace tests
             m.router@._addRoutes([
                 { pattern: "/alpha", component: "View", allowReuse: true }
             ])
-            return promises.chain(rokuRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
                 getGlobalAA().routerStatesHistory = []
                 ' Navigate to the same route again — should reuse the view
-                return rokuRouter.navigateTo("/alpha", { router: m.router })
+                return sgRouter.navigateTo("/alpha", { router: m.router })
             end function).then(function(_, m)
                 ' Should go through ResolveStart → NavigationEnd without creating a new view
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
@@ -423,9 +423,9 @@ namespace tests
                 { pattern: "/beta", component: "View" }
             ])
             ' Start nav 1 without awaiting it
-            rokuRouter.navigateTo("/alpha", { router: m.router })
+            sgRouter.navigateTo("/alpha", { router: m.router })
             ' Immediately start nav 2 — should be rejected
-            nav2 = rokuRouter.navigateTo("/beta", { router: m.router })
+            nav2 = sgRouter.navigateTo("/beta", { router: m.router })
             return promises.chain(nav2, m).then(function(_, m)
                 m.fail("Concurrent navigation should have been rejected")
             end function).catch(function(error, m)
@@ -439,7 +439,7 @@ namespace tests
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @it("creates a command")
         function _() 'bs:disable-line 1026 LINT1026
-            command = rokuRouter.createRedirectCommand("alpha/beta")
+            command = sgRouter.createRedirectCommand("alpha/beta")
             m.assertEqual(command, {
                 command: "RedirectCommand",
                 path: "alpha/beta",
@@ -454,12 +454,12 @@ namespace tests
         @it("getRoutes")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
-            rokuRouter.addRoutes([
+            sgRouter.addRoutes([
                 { pattern: "/alpha", component: "View" },
                 { pattern: "/beta", component: "View" },
             ], { router: m.router })
 
-            m.assertEqual(rokuRouter.getRoutes({ router: m.router }), {
+            m.assertEqual(sgRouter.getRoutes({ router: m.router }), {
                 "/alpha": {
                     "allowreuse": false
                     "canactivate": []

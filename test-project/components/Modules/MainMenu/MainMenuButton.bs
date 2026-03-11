@@ -39,10 +39,10 @@ end sub
 function onKeyEvent(key = "" as String, press = false as Boolean) as Boolean
     if press then
         if key = "OK" then
-            navigateTo = rokuRouter.navigateTo(m.top.link)
+            navigateTo = sgRouter.navigateTo(m.top.link)
             if navigateTo <> Invalid then
                 promises.chain(navigateTo).then(sub(response as Dynamic)
-                    rokuRouter.setFocus({ focus: true })
+                    sgRouter.setFocus({ focus: true })
                 end sub)
                 return true
             end if

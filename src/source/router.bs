@@ -7,7 +7,7 @@ import "RouterState.bs"
 '*** This namespace can be used inside any component that is a view, or child of a view
 '*** DO NOT USE THIS FILE OUTSIDE OF A VIEW COMPONENT, such as the main scene
 '************************
-namespace rokuRouter
+namespace sgRouter
 
     function initialize(params = {} as Object) as Dynamic
         routerObject = Invalid
@@ -18,11 +18,11 @@ namespace rokuRouter
         end if
 
         if params.outlet = Invalid then
-            params.outlet = rokuRouter.searchForOutlet(m.top.getScene())
+            params.outlet = sgRouter.searchForOutlet(m.top.getScene())
         end if
 
         ' Validate the outlet
-        if rokuRouter.utils.isRouter(routerObject) AND rokuRouter.utils.isOutlet(params.outlet) then
+        if sgRouter.utils.isRouter(routerObject) AND sgRouter.utils.isOutlet(params.outlet) then
             m.top.getScene().addFields({ __router: routerObject })
             return routerObject@._initialize(params)
         end if
@@ -31,7 +31,7 @@ namespace rokuRouter
     end function
 
     sub destroy()
-        r = rokuRouter.getRouter()
+        r = sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
             r@._destroy()
             m.top.getScene().removeField("__router")
@@ -46,7 +46,7 @@ namespace rokuRouter
     ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
     ' @return - A promise that will resolve when the navigation is complete
     function navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
-        r = options.router <> Invalid ? options.router : rokuRouter.getRouter()
+        r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
             return r@._navigateTo(path, options)
         end if
@@ -54,7 +54,7 @@ namespace rokuRouter
     end function
 
     function goBack(options = {} as Object) as Dynamic
-        r = options.router <> Invalid ? options.router : rokuRouter.getRouter()
+        r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
             return r@._goBack(Invalid)
         end if
@@ -67,7 +67,7 @@ namespace rokuRouter
     ' @param options - The options to pass to the router
     ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
     sub addRoutes(routes = [] as Object, options = {} as Object)
-        r = options.router <> Invalid ? options.router : rokuRouter.getRouter()
+        r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
             r@._addRoutes(routes)
         end if
@@ -77,7 +77,7 @@ namespace rokuRouter
     ' @since 0.0.1
     ' @return - All routes from the router
     function getRoutes(options = {} as Object) as Dynamic
-        r = options.router <> Invalid ? options.router : rokuRouter.getRouter()
+        r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
             return r@._getRoutes()
         end if
@@ -97,7 +97,7 @@ namespace rokuRouter
         end if
 
         ' Check to see if you are in the outlet
-        if rokuRouter.utils.isOutlet(parent) then
+        if sgRouter.utils.isOutlet(parent) then
             return parent
         end if
 
@@ -105,7 +105,7 @@ namespace rokuRouter
         nodes.append(rodash.getNodeChildren(parent))
         while nodes.count() > 0
             node = nodes.Shift()
-            if rokuRouter.utils.isOutlet(node) then
+            if sgRouter.utils.isOutlet(node) then
                 return node
             else
                 'push all of this node's children to be searched in the future
@@ -117,7 +117,7 @@ namespace rokuRouter
     end function
 
     function setFocus(options = {} as Object) as Boolean
-        r = options.router <> Invalid ? options.router : rokuRouter.getRouter()
+        r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) AND rodash.isBoolean(options.focus) then
             return r@._setFocus(options.focus)
         end if
@@ -142,7 +142,7 @@ namespace rokuRouter
 
 end namespace
 
-namespace rokuRouter.utils
+namespace sgRouter.utils
     function isOutlet(node = Invalid as Object) as Boolean
         return rodash.isNode(node) AND node.hasField("__isOutlet")
     end function
