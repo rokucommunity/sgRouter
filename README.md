@@ -1,7 +1,7 @@
 # sgRouter – Modern View Management for Roku Applications
 
 <p align="center">
-  <img width="210" height="229" alt="image" src="https://github.com/user-attachments/assets/998781d7-190d-4888-aeee-957aba00753a" />
+  <img width="210" height="229" alt="sgRouter logo" src="https://github.com/user-attachments/assets/998781d7-190d-4888-aeee-957aba00753a" />
 </p>
 
 <p align="center">
