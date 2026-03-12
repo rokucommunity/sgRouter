@@ -1,3 +1,8 @@
 function canDeactivate(_ = Invalid as Dynamic) as Boolean
-    return m.top.returnValue
+    ' Safely read returnValue from the component, falling back to false if unavailable
+    if m.top <> Invalid and m.top.returnValue <> Invalid then
+        return m.top.returnValue
+    end if
+
+    return false
 end function
