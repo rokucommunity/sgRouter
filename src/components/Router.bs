@@ -429,9 +429,10 @@ function runGuardChecks(route as Dynamic, currentRoute = Invalid as Dynamic) as 
             route: route
         })
         ' An event triggered when a navigation is canceled, directly or indirectly. This can happen for several reasons including when a route guard returns false or initiates a redirect.
+        cancelRoute = currentRoute <> Invalid ? currentRoute : route
         dispatchRouterState(RouterState.NavigationCancel, {
-            id: route.id
-            route: route
+            id: cancelRoute.id
+            route: cancelRoute
         })
         if activateResult.redirectTo <> Invalid then
             return promises.resolve({ allow: false, redirect: _navigateTo(activateResult.redirectTo, activateResult.redirectOptions) })

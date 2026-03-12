@@ -596,6 +596,81 @@ namespace tests
         end function
 
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("canActivate")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        @async()
+        @it("allows navigation when canActivate guard returns true")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            guard = createObject("roSGNode", "TestCanActivateGuard")
+            guard.returnValue = true
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", canActivate: [guard] }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/beta")
+                m.assertTrue(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationEnd") <> -1)
+                m.assertFalse(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationCancel") <> -1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("cancels navigation and dispatches NavigationCancel when canActivate guard returns false")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            guard = createObject("roSGNode", "TestCanActivateGuard")
+            guard.returnValue = false
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", canActivate: [guard] }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("Navigation should have been rejected")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+                m.assertTrue(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationCancel") <> -1)
+                m.assertFalse(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationEnd") <> -1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("redirects when canActivate guard returns a redirect command")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+
+            guard = createObject("roSGNode", "TestCanActivateRedirectGuard")
+            guard.redirectPath = "/alpha"
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", canActivate: [guard] }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("getRoutes")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @it("getRoutes")

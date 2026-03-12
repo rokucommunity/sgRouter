@@ -1,0 +1,3 @@
+function canActivate(_ = Invalid as Dynamic) as Dynamic
+    return m.top.returnValue
+end function

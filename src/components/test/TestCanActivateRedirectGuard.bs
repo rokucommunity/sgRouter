@@ -1,0 +1,5 @@
+import "pkg:/source/router.bs"
+
+function canActivate(_ = Invalid as Dynamic) as Dynamic
+    return sgRouter.createRedirectCommand(m.top.redirectPath)
+end function
