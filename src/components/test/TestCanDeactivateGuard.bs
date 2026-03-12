@@ -1,0 +1,3 @@
+function canDeactivate(_ = Invalid as Dynamic) as Boolean
+    return m.top.returnValue
+end function

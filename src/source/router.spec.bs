@@ -43,6 +43,7 @@ namespace tests
                 "/alpha": {
                     "allowreuse": false
                     "canactivate": []
+                    "candeactivate": []
                     "component": "View"
                     "clearstackonresolve": false
                     "keepalive": { enabled: false }
@@ -51,6 +52,7 @@ namespace tests
                 "/beta": {
                     "allowreuse": false
                     "canactivate": []
+                    "candeactivate": []
                     "component": "View"
                     "clearstackonresolve": false
                     "keepalive": { enabled: false }
@@ -449,6 +451,151 @@ namespace tests
         end function
 
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("canDeactivate")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        @async()
+        @it("allows navigation when canDeactivate guard returns true")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            guard = createObject("roSGNode", "TestCanDeactivateGuard")
+            guard.returnValue = true
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", canDeactivate: [guard] }
+                { pattern: "/beta", component: "View" }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/beta")
+                m.assertTrue(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationEnd") <> -1)
+                m.assertFalse(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationCancel") <> -1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("cancels navigation and dispatches NavigationCancel when canDeactivate guard returns false")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            guard = createObject("roSGNode", "TestCanDeactivateGuard")
+            guard.returnValue = false
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", canDeactivate: [guard] }
+                { pattern: "/beta", component: "View" }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("Navigation should have been rejected")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+                m.assertTrue(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationCancel") <> -1)
+                m.assertFalse(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationEnd") <> -1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("canDeactivate guard receives currentRoute and targetRoute in context")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+
+            guard = createObject("roSGNode", "TestCanDeactivateGuard")
+            guard.returnValue = true
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", canDeactivate: [guard] }
+                { pattern: "/beta", component: "View" }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' Navigation succeeded — guard ran and returned true
+                m.assertEqual(m.router.routerState.url, "/beta")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("goBack returns false when canDeactivate guard blocks")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            guard = createObject("roSGNode", "TestCanDeactivateGuard")
+            guard.returnValue = false
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", canDeactivate: [guard] }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                result = sgRouter.goBack({ router: m.router })
+                m.assertFalse(result)
+                m.assertEqual(m.router.routerState.url, "/beta")
+                m.assertTrue(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationCancel") <> -1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("goBack succeeds when canDeactivate guard allows")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+
+            guard = createObject("roSGNode", "TestCanDeactivateGuard")
+            guard.returnValue = true
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", canDeactivate: [guard] }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                result = sgRouter.goBack({ router: m.router })
+                m.assertTrue(result)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("canDeactivate does not fire when navigating to the same path")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            guard = createObject("roSGNode", "TestCanDeactivateGuard")
+            guard.returnValue = false
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", allowReuse: true, canDeactivate: [guard] }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                ' Same path — canDeactivate should not block this
+                return sgRouter.navigateTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+                m.assertFalse(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationCancel") <> -1)
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("getRoutes")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @it("getRoutes")
@@ -463,6 +610,7 @@ namespace tests
                 "/alpha": {
                     "allowreuse": false
                     "canactivate": []
+                    "candeactivate": []
                     "component": "View"
                     "clearstackonresolve": false
                     "keepalive": { enabled: false }
@@ -471,6 +619,7 @@ namespace tests
                 "/beta": {
                     "allowreuse": false
                     "canactivate": []
+                    "candeactivate": []
                     "component": "View"
                     "clearstackonresolve": false
                     "keepalive": { enabled: false }

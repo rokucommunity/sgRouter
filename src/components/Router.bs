@@ -68,6 +68,7 @@ sub _addRoutes(routes = [] as Object)
             component: ""
             allowReuse: false
             canActivate: []
+            canDeactivate: []
             clearStackOnResolve: false
             keepAlive: { enabled: false }
         }, route)
@@ -127,15 +128,29 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
         return false
     end if
 
-    if viewToOpenFromKeepAlive then
-        viewToOpen.reparent(m.__router_viewTarget, true)
-    end if
-
     ' An event triggered when a navigation starts.
     dispatchRouterState(RouterState.NavigationStart, {
         id: viewToOpen.route.id
         route: viewToOpen.route
     })
+
+    ' Run canDeactivate guards before modifying any state.
+    ' If blocked, cancel the navigation and leave the current view untouched.
+    if m.__router_activeView <> Invalid then
+        deactivateResult = runDeactivateGuardsSync(m.__router_activeView.route, viewToOpen.route)
+        if NOT deactivateResult.allow then
+            m.__router_processingGoBack = false
+            dispatchRouterState(RouterState.NavigationCancel, {
+                id: m.__router_activeView.route.id
+                route: m.__router_activeView.route
+            })
+            return false
+        end if
+    end if
+
+    if viewToOpenFromKeepAlive then
+        viewToOpen.reparent(m.__router_viewTarget, true)
+    end if
 
     ' Close or suspend the current view
     viewToClose = m.__router_activeView
@@ -253,7 +268,8 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
 
     'sleep until next tick, then continue work
     return promises.chain(promises.resolve(Invalid), { newRoute: newRoute }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
-        return runGuardChecks(internalContext.newRoute)
+        currentRoute = m.__router_activeView <> Invalid ? m.__router_activeView.route : Invalid
+        return runGuardChecks(internalContext.newRoute, currentRoute)
     end function).then(function(guardCheckResponse as Dynamic, internalContext as Dynamic) as Dynamic
         if NOT guardCheckResponse.allow then
             if guardCheckResponse.redirect <> Invalid then
@@ -377,88 +393,50 @@ end function
 '*************************************************************************
 
 ' Function to run guard checks
-' @param {Dynamic} route - The route to run the guard checks on
+' @param {Dynamic} route - The destination route (canActivate guards evaluated against this)
+' @param {Dynamic} currentRoute - The route being left (canDeactivate guards evaluated against this)
 ' @returns {Dynamic} - The result of the guard checks
-function runGuardChecks(route as Dynamic) as Dynamic
-    ' Run guard checks
-    canActivateGuard = rodash.get(route.routeConfig, "canActivate")
+function runGuardChecks(route as Dynamic, currentRoute = Invalid as Dynamic) as Dynamic
     dispatchRouterState(RouterState.GuardsCheckStart, {
         id: route.id
         route: route
     })
-    if rodash.isNonEmptyArray(canActivateGuard) then
-        for each guard in canActivateGuard
-            guardNode = Invalid
-            if rodash.isAA(guard) then
-                guardNode = rodash.createNode("KeyPathGuard")
-                guardNode@.setGuardConfig(guard)
-            else if rodash.isNode(guard) then
-                guardNode = guard
-            else if rodash.isString(guard) then
-                if m.__router_guardInstances[guard] = Invalid then
-                    m.__router_guardInstances[guard] = rodash.createNode(guard)
-                end if
 
-                guardNode = m.__router_guardInstances[guard]
+    ' Check canDeactivate guards on the view being left before evaluating canActivate.
+    ' Skipped when the destination is the same path (allowReuse / hash updates).
+    if currentRoute <> Invalid then
+        isSamePath = rodash.isEqual(route.path, currentRoute.path)
+        if NOT isSamePath then
+            deactivateResult = runDeactivateGuardsSync(currentRoute, route)
+            if NOT deactivateResult.allow then
+                dispatchRouterState(RouterState.GuardsCheckEnd, {
+                    id: route.id
+                    route: route
+                })
+                dispatchRouterState(RouterState.NavigationCancel, {
+                    id: currentRoute.id
+                    route: currentRoute
+                })
+                return promises.resolve({ allow: false, message: `Route "${route.path}" blocked by canDeactivate guard` })
             end if
+        end if
+    end if
 
-            if guardNode <> Invalid then
-                canActivateResult = guardNode@.canActivate(route)
-
-                if rodash.isBoolean(canActivateResult) then
-                    canActivate = canActivateResult
-
-                    if NOT canActivate then
-                        message = { allow: false, message: `Route "${route.path}" is not accessible` }
-                        dispatchRouterState(RouterState.GuardsCheckEnd, {
-                            id: route.id
-                            route: route
-                        })
-
-                        ' An event triggered when a navigation is canceled, directly or indirectly. This can happen for several reasons including when a route guard returns false or initiates a redirect.
-                        dispatchRouterState(RouterState.NavigationCancel, {
-                            id: route.id
-                            route: route
-                        })
-
-                        return promises.resolve(message)
-                    end if
-                else if rodash.isNonEmptyAA(canActivateResult) then
-                    redirectTo = rodash.getString(canActivateResult, "path")
-                    if rodash.isNonEmptyString(redirectTo) then
-                        ' An event triggered at the end of the Guard phase of routing.
-                        dispatchRouterState(RouterState.GuardsCheckEnd, {
-                            id: route.id
-                            route: route
-                        })
-
-                        ' An event triggered when a navigation is canceled, directly or indirectly. This can happen for several reasons including when a route guard returns false or initiates a redirect.
-                        dispatchRouterState(RouterState.NavigationCancel, {
-                            id: route.id
-                            route: route
-                        })
-
-                        ' Options to merge
-                        toMerge = []
-                        if rodash.isNonEmptyAA(route.options) then
-                            toMerge.push(route.options)
-                        end if
-                        if rodash.isNonEmptyAA(canActivateResult.options) then
-                            toMerge.push(canActivateResult.options)
-                        end if
-                        toMerge.push({ navigationState: { fromRedirect: true } })
-
-                        options = rodash.merge({}, toMerge)
-                        ' Reset flag so the redirect can start a fresh navigation
-                        m.__router_navigationInProgress = false
-                        return promises.resolve({ allow: false, redirect: _navigateTo(redirectTo, options) })
-                    end if
-                else
-                    message = { allow: false, message: `Invalid Route Guard on "${route.path}"` }
-                    return promises.resolve(message)
-                end if
-            end if
-        end for
+    activateResult = runActivateGuardsSync(route)
+    if NOT activateResult.allow then
+        dispatchRouterState(RouterState.GuardsCheckEnd, {
+            id: route.id
+            route: route
+        })
+        ' An event triggered when a navigation is canceled, directly or indirectly. This can happen for several reasons including when a route guard returns false or initiates a redirect.
+        dispatchRouterState(RouterState.NavigationCancel, {
+            id: route.id
+            route: route
+        })
+        if activateResult.redirectTo <> Invalid then
+            return promises.resolve({ allow: false, redirect: _navigateTo(activateResult.redirectTo, activateResult.redirectOptions) })
+        end if
+        return promises.resolve(activateResult)
     end if
 
     ' An event triggered at the start of the activation part of the Resolve phase of routing.
@@ -473,6 +451,93 @@ function runGuardChecks(route as Dynamic) as Dynamic
         route: route
     })
     return promises.resolve({ allow: true })
+end function
+
+' Synchronously run canActivate guards for the destination route.
+' Returns { allow: true }, { allow: false, message: "..." },
+'         or { allow: false, redirectTo: path, redirectOptions: options } for redirect commands.
+function runActivateGuardsSync(route as Dynamic) as Object
+    canActivateGuards = rodash.get(route.routeConfig, "canActivate")
+    if NOT rodash.isNonEmptyArray(canActivateGuards) then return { allow: true }
+
+    for each guard in canActivateGuards
+        guardNode = Invalid
+        if rodash.isAA(guard) then
+            guardNode = rodash.createNode("KeyPathGuard")
+            guardNode@.setGuardConfig(guard)
+        else if rodash.isNode(guard) then
+            guardNode = guard
+        else if rodash.isString(guard) then
+            if m.__router_guardInstances[guard] = Invalid then
+                m.__router_guardInstances[guard] = rodash.createNode(guard)
+            end if
+            guardNode = m.__router_guardInstances[guard]
+        end if
+
+        if guardNode <> Invalid then
+            canActivateResult = guardNode@.canActivate(route)
+
+            if rodash.isBoolean(canActivateResult) then
+                if NOT canActivateResult then
+                    return { allow: false, message: `Route "${route.path}" is not accessible` }
+                end if
+            else if rodash.isNonEmptyAA(canActivateResult) then
+                redirectTo = rodash.getString(canActivateResult, "path")
+                if rodash.isNonEmptyString(redirectTo) then
+                    toMerge = []
+                    if rodash.isNonEmptyAA(route.options) then
+                        toMerge.push(route.options)
+                    end if
+                    if rodash.isNonEmptyAA(canActivateResult.options) then
+                        toMerge.push(canActivateResult.options)
+                    end if
+                    toMerge.push({ navigationState: { fromRedirect: true } })
+                    return { allow: false, redirectTo: redirectTo, redirectOptions: rodash.merge({}, toMerge) }
+                end if
+            else
+                return { allow: false, message: `Invalid Route Guard on "${route.path}"` }
+            end if
+        end if
+    end for
+
+    return { allow: true }
+end function
+
+' Synchronously run canDeactivate guards for the currently active route.
+' Returns { allow: true } if all guards pass, { allow: false } if any guard blocks navigation.
+' @param {Dynamic} currentRoute - The route being left
+' @param {Dynamic} targetRoute  - The route being navigated to
+function runDeactivateGuardsSync(currentRoute as Dynamic, targetRoute as Dynamic) as Object
+    if currentRoute = Invalid then return { allow: true }
+
+    canDeactivateGuards = rodash.get(currentRoute.routeConfig, "canDeactivate")
+    if NOT rodash.isNonEmptyArray(canDeactivateGuards) then return { allow: true }
+
+    context = {
+        currentRoute: currentRoute
+        targetRoute: targetRoute
+    }
+
+    for each guard in canDeactivateGuards
+        guardNode = Invalid
+        if rodash.isNode(guard) then
+            guardNode = guard
+        else if rodash.isString(guard) then
+            if m.__router_guardInstances[guard] = Invalid then
+                m.__router_guardInstances[guard] = rodash.createNode(guard)
+            end if
+            guardNode = m.__router_guardInstances[guard]
+        end if
+
+        if guardNode <> Invalid then
+            result = guardNode@.canDeactivate(context)
+            if rodash.isBoolean(result) AND NOT result then
+                return { allow: false }
+            end if
+        end if
+    end for
+
+    return { allow: true }
 end function
 
 '*************************************************************************
@@ -820,7 +885,7 @@ end function
 sub dispatchRouterState(stateType as String, context = {} as Dynamic)
     if stateType = RouterState.NavigationStart then
         m.__router_navigationInProgress = true
-    else if stateType = RouterState.NavigationEnd OR stateType = RouterState.NavigationError then
+    else if stateType = RouterState.NavigationEnd OR stateType = RouterState.NavigationError OR stateType = RouterState.NavigationCancel then
         m.__router_navigationInProgress = false
     end if
 

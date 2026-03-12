@@ -16,6 +16,7 @@ namespace sgRouter
         optional name as String ' stable identifier for named navigation (e.g. "movieDetail")
         optional allowReuse as Boolean ' call onRouteUpdate instead of creating a new view
         optional canActivate as Dynamic
+        optional canDeactivate as Dynamic
         optional clearStackOnResolve as Boolean ' clear the view stack when this route is activated
         optional keepAlive as sgRouter.KeepAliveConfig
     end interface
