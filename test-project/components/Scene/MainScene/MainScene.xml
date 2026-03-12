@@ -13,5 +13,11 @@
 				horizAlign="center" translation="[0, 500]" />
 		</Rectangle>
 		<MainMenu id="mainMenu" visible="false" />
+
+		<Group id="canDeactivateHud" translation="[1200, 20]">
+			<Rectangle color="#000000C0" width="500" height="52" />
+			<Label id="canDeactivateHudLabel" text="[Replay] canDeactivate: ON" color="#FFFFFF"
+				width="500" horizAlign="center" translation="[0, 14]" />
+		</Group>
 	</children>
 </component>

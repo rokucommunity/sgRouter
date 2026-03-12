@@ -22,11 +22,16 @@ sub init()
     m.top.backgroundUri = ""
 
     m.global.addFields({
-        "AuthManager": createObject("roSGNode", "AuthManager")
+        "AuthManager": createObject("roSGNode", "AuthManager"),
+        "CanDeactivateManager": createObject("roSGNode", "CanDeactivateManager")
     })
 
     ' observe the isLoggedIn field on the AuthManager
     m.global.AuthManager.observeField("isLoggedIn", "onAuthManagerIsLoggedInChanged")
+
+    ' set up the canDeactivate HUD
+    m.canDeactivateHudLabel = m.top.findNode("canDeactivateHudLabel")
+    m.global.CanDeactivateManager.observeField("enabled", "onCanDeactivateManagerEnabledChanged")
 
     ' initialize the main menu
     m.mainMenu.router = sgRouter.getRouter()
@@ -37,9 +42,9 @@ sub init()
 
     ' add the routes to the router
     sgRouter.addRoutes([
-        { pattern: "/", component: "WelcomeScreen", clearStackOnResolve: true },
-        { pattern: "/shows", component: "CatalogScreen", clearStackOnResolve: true, canActivate: [m.global.AuthManager] },
-        { pattern: "/movies", component: "CatalogScreen", clearStackOnResolve: true, keepAlive: { enabled: true }, canActivate: [{
+        { pattern: "/", component: "WelcomeScreen", clearStackOnResolve: true, canDeactivate: [m.global.CanDeactivateManager] },
+        { pattern: "/shows", component: "CatalogScreen", clearStackOnResolve: true, canActivate: [m.global.AuthManager], canDeactivate: [m.global.CanDeactivateManager] },
+        { pattern: "/movies", component: "CatalogScreen", clearStackOnResolve: true, keepAlive: { enabled: true }, canDeactivate: [m.global.CanDeactivateManager], canActivate: [{
                 keyPath: "AuthManager.isLoggedIn",
                 scope: "global",
                 expectedValue: true,
@@ -49,9 +54,9 @@ sub init()
                 },
                 denyRedirect: "/"
         }] },
-        { pattern: "/details/:type/:id", component: "DetailsScreen", name: "DetailsView", keepAlive: { enabled: true }, canActivate: [m.global.AuthManager] },
-        { pattern: "/details/:type/:id/cast", component: "CastDetailsScreen", canActivate: [m.global.AuthManager] },
-        { pattern: "/:screenName", component: "DefaultScreen" }
+        { pattern: "/details/:type/:id", component: "DetailsScreen", name: "DetailsView", keepAlive: { enabled: true }, canActivate: [m.global.AuthManager], canDeactivate: [m.global.CanDeactivateManager] },
+        { pattern: "/details/:type/:id/cast", component: "CastDetailsScreen", canActivate: [m.global.AuthManager], canDeactivate: [m.global.CanDeactivateManager] },
+        { pattern: "/:screenName", component: "DefaultScreen", canDeactivate: [m.global.CanDeactivateManager] }
     ])
 
     ' navigate to the first screen
@@ -68,6 +73,13 @@ sub onAuthManagerIsLoggedInChanged(event as Object)
     else
         sgRouter.navigateTo("/")
     end if
+end sub
+
+' Updates the HUD label when canDeactivate enabled state changes
+sub onCanDeactivateManagerEnabledChanged(event as Object)
+    state = "ON"
+    if NOT event.getData() then state = "OFF"
+    m.canDeactivateHudLabel.text = `[Replay] canDeactivate: ${state}`
 end sub
 
 ' This function is called when the routerState field on the router changes
@@ -97,7 +109,10 @@ end sub
 ' Handles the key events
 function onKeyEvent(key = "" as String, press = false as Boolean) as Boolean
     if press then
-        if key = "back" OR key = "left" then
+        if key = "replay" then
+            m.global.CanDeactivateManager.enabled = NOT m.global.CanDeactivateManager.enabled
+            return true
+        else if key = "back" OR key = "left" then
             if m.mainMenu.visible then m.mainMenu.setFocus(true)
             return true
         else if key = "right" then
