@@ -16,6 +16,7 @@
     "url": "https://github.com/rokucommunity/sgRouter/issues"
   },
   "scripts": {
+    "package": "npx ropm copy && npm run build && npm pack",
     "preversion": "npx ropm copy && npm run build",
     "build": "npm run compile && ts-node ./scripts/createDist.ts",
     "build-tests": "npm run compile -- --project tests/bsconfig.json",
