@@ -1,5 +1,5 @@
 {
-  "name": "sgrouter",
+  "name": "@rokucommunity/sgrouter",
   "version": "0.1.0",
   "description": "A router for the Roku platform",
   "main": "index.js",
