@@ -1,3 +1,18 @@
-function canActivate(_ = Invalid as Dynamic) as Dynamic
+function init() as void
+    ' Ensure m.top exists and has a returnValue field, even if XML/interface omitted it
+    if m.top <> invalid then
+        ' addField will no-op if the field already exists
+        m.top.addField("returnValue", "dynamic", invalid)
+    end if
+end function
+
+function canActivate(_ = invalid as Dynamic) as Dynamic
+    ' Defensively handle cases where m.top or returnValue is not set
+    if m.top = invalid then
+        return invalid
+    end if
+
+    ' At this point, init() should have ensured the field exists, but
+    ' we still guard against it being unset
     return m.top.returnValue
 end function
