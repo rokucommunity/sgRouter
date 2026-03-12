@@ -38,7 +38,7 @@ Install via **[ropm](https://www.npmjs.com/package/ropm)**:
 
 ```bash
 npx ropm install promises@npm:@rokucommunity/promises
-npx ropm install sgrouter
+npx ropm install sgRouter@npm:@rokucommunity/sgrouter
 ```
 
 ---
