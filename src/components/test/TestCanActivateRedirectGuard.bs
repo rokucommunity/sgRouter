@@ -4,10 +4,10 @@ function canActivate(config = Invalid as Dynamic) as Dynamic
     redirectPath = Invalid
 
     ' Prefer an explicit config value if provided
-    if config <> Invalid and config.redirectPath <> Invalid then
+    if config <> Invalid AND config.redirectPath <> Invalid then
         redirectPath = config.redirectPath
-    ' Fall back to component field when running as an SG node
-    else if m <> Invalid and m.top <> Invalid and m.top.redirectPath <> Invalid then
+        ' Fall back to component field when running as an SG node
+    else if m.top.redirectPath <> Invalid then
         redirectPath = m.top.redirectPath
     end if
 

@@ -510,29 +510,27 @@ namespace tests
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
 
-            guard = createObject("roSGNode", "TestCanDeactivateGuard")
-            guard.returnValue = true
+            m.canDeactivateGuard = createObject("roSGNode", "TestCanDeactivateGuard")
+            m.canDeactivateGuard.returnValue = true
 
             m.router@._addRoutes([
-                { pattern: "/alpha", component: "View", canDeactivate: [guard] }
+                { pattern: "/alpha", component: "View", canDeactivate: [m.canDeactivateGuard] }
                 { pattern: "/beta", component: "View" }
             ])
 
-            expectedCurrentUrl = invalid
-
             return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
                 ' Capture the current route after navigating to /alpha
-                expectedCurrentUrl = m.router.routerState.url
+                m.expectedCurrentUrl = m.router.routerState.url
                 return sgRouter.navigateTo("/beta", { router: m.router })
             end function).then(function(_, m)
                 ' Navigation succeeded — guard ran and returned true
                 m.assertEqual(m.router.routerState.url, "/beta")
 
                 ' Verify that the canDeactivate guard received the expected routes in its context
-                m.assertNotInvalid(guard.currentRoute)
-                m.assertNotInvalid(guard.targetRoute)
-                m.assertEqual(guard.currentRoute.url, expectedCurrentUrl)
-                m.assertEqual(guard.targetRoute.url, "/beta")
+                m.assertNotInvalid(m.canDeactivateGuard.currentRoute)
+                m.assertNotInvalid(m.canDeactivateGuard.targetRoute)
+                m.assertEqual(m.canDeactivateGuard.currentRoute.url, m.expectedCurrentUrl)
+                m.assertEqual(m.canDeactivateGuard.targetRoute.url, "/beta")
             end function).toPromise()
         end function
 
