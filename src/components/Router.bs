@@ -532,7 +532,15 @@ function runDeactivateGuardsSync(currentRoute as Dynamic, targetRoute as Dynamic
 
         if guardNode <> Invalid then
             result = guardNode@.canDeactivate(context)
-            if rodash.isBoolean(result) AND NOT result then
+
+            ' Guard results must be strictly boolean; any other type is treated as invalid and blocks navigation
+            if NOT rodash.isBoolean(result) then
+                ' Optional: log a warning for easier debugging of misconfigured guards
+                print "Router: canDeactivate guard must return a boolean. Blocking navigation for route: "; currentRoute.routeConfig
+                return { allow: false }
+            end if
+
+            if NOT result then
                 return { allow: false }
             end if
         end if
