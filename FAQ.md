@@ -53,7 +53,7 @@ Views extending `sgRouter_View` can define the following:
 - `beforeViewClose(params)` — called before the view is destroyed
 - `onViewSuspend(params)` — called when a new view navigates on top of this one, or when the view is kept alive in the background via `keepAlive`
 - `onViewResume(params)` — called when the view returns to the top of the stack
-- `onRouteUpdate(params)` — called when navigating to the same route with different params or hash (requires `allowReuse: true`)
+- `onRouteUpdate(event)` — called when navigating to the same route with different params or hash (requires `allowReuse: true`); receives `{ oldRoute, newRoute }` — see below
 - `handleFocus()` — called when the view becomes active and needs to handle focus
 
 **What is `beforeViewOpen` useful for?**
@@ -63,7 +63,7 @@ It's the right place to do any setup work before a view is shown, such as kickin
 `onViewSuspend` is called when a view is pushed down the stack by a new view, or when it is kept alive in the background via `keepAlive`. In both cases the view is still alive and can be resumed later. `beforeViewClose` is called when a view is about to be permanently destroyed.
 
 **What params does each lifecycle hook receive?**
-`beforeViewOpen`, `onViewOpen`, `beforeViewClose`, `onViewSuspend`, `onViewResume`, and `onRouteUpdate` all receive a `params` object containing a route snapshot:
+`beforeViewOpen`, `onViewOpen`, `beforeViewClose`, `onViewSuspend`, and `onViewResume` all receive a `params` object containing a route snapshot:
 
 - `params.route.routeConfig` — the matched route definition
 - `params.route.routeParams` — values extracted from URL placeholders like `:id`
@@ -71,8 +71,15 @@ It's the right place to do any setup work before a view is shown, such as kickin
 - `params.route.hash` — the hash fragment
 - `params.route.navigationState` — how the navigation was triggered (forward push, back, keepAlive resume, or redirect)
 
+`onRouteUpdate` is different — it receives a `RouteUpdateEvent` with both the old and new route:
+
+- `event.oldRoute` — the route that was active before the update
+- `event.newRoute` — the incoming route (with updated params, query params, or hash)
+
 **What is `onRouteUpdate` and when does it fire?**
 `onRouteUpdate` fires whenever the router reuses the currently active route instead of destroying and rebuilding it. This includes navigating to the same route with different params or query params (when `allowReuse: true` is set), navigating with only the hash fragment changed, and navigating again to an identical path. Use this hook to update the view in place when the route changes but the underlying view instance is kept alive.
+
+Unlike the other lifecycle hooks, `onRouteUpdate` receives a `RouteUpdateEvent` with both the old and new route (`event.oldRoute` and `event.newRoute`), so you can diff the two and respond to exactly what changed.
 
 ---
 
