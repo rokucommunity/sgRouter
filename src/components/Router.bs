@@ -12,6 +12,7 @@ sub init()
     m.__router_navigationInProgress = false
     m.__router_outlet = Invalid
     m.__router_processingGoBack = false
+    m.__router_processingPopTo = false
     m.__router_routes = {}
 
     m.top.focusable = true
@@ -50,6 +51,7 @@ sub _destroy(_ = Invalid as Dynamic)
     m.__router_navigationInProgress = false
     m.__router_outlet = Invalid
     m.__router_processingGoBack = false
+    m.__router_processingPopTo = false
     m.__router_routes = {}
 
     rodash.removeNodeChildren(m.__router_viewTarget)
@@ -87,6 +89,15 @@ end sub
 ' @returns {Array} - The routes
 function _getRoutes(_ = Invalid as Dynamic) as Dynamic
     return m.__router_routes
+end function
+
+' Function to get the active route
+' @returns {Object} - The active route, or Invalid if no route is active
+function _getActiveRoute(_ = Invalid as Dynamic) as Dynamic
+    if m.__router_activeView <> Invalid then
+        return m.__router_activeView.route
+    end if
+    return Invalid
 end function
 
 ' Function to navigate back in the router history
@@ -284,17 +295,13 @@ function _popTo(path = "" as Dynamic) as Dynamic
         closePromises.push(closeView(cv))
     end for
 
+    m.__router_processingPopTo = true
     return promises.chain(promises.all(closePromises), { targetView: targetView, targetFromKeepAlive: targetFromKeepAlive }).then(function(_ as Dynamic, ctx as Dynamic) as Dynamic
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
-        ctx.targetView.route.navigationState = rodash.merge(ctx.targetView.route.navigationState, {
-            fromPopState: false
-            fromPushState: false
-            fromKeepAlive: ctx.targetFromKeepAlive
-            fromRedirect: false
-        })
         return showView(ctx.targetView, ctx.targetFromKeepAlive)
     end function).catch(function(error as Dynamic) as Dynamic
         m.__router_processingGoBack = false
+        m.__router_processingPopTo = false
         m.__router_navigationInProgress = false
         return promises.reject(error)
     end function).toPromise()
@@ -859,19 +866,23 @@ function showView(view as Object, onResume = false as Boolean) as Dynamic
             ' History updates should be based on navigation state, not onResume.
             ' - fromPopState: pop history
             ' - fromPushState: push history (including keepAlive resumes)
-            if context.view.route.navigationState.fromPopState then
-                m.__router_historyStack.pop()
-            else
-                if context.view.route.routeConfig.clearStackOnResolve then
-                    m.__router_historyStack = []
-                end if
+            ' - processingPopTo: stack already managed by _popTo, skip all history updates
+            if NOT m.__router_processingPopTo then
+                if context.view.route.navigationState.fromPopState then
+                    m.__router_historyStack.pop()
+                else
+                    if context.view.route.routeConfig.clearStackOnResolve then
+                        m.__router_historyStack = []
+                    end if
 
-                if context.view.route.navigationState.fromPushState then
-                    m.__router_historyStack.push(context.view.route.path)
+                    if context.view.route.navigationState.fromPushState then
+                        m.__router_historyStack.push(context.view.route.path)
+                    end if
                 end if
             end if
 
             m.__router_processingGoBack = false
+            m.__router_processingPopTo = false
             dispatchRouterState(RouterState.NavigationEnd, {
                 id: context.view.id
                 route: context.view.route

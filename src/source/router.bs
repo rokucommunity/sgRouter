@@ -98,6 +98,17 @@ namespace sgRouter
         return {}
     end function
 
+    ' This function is used to get the active route from the router
+    ' @since 0.1.3
+    ' @return - The active route, or Invalid if no route is active
+    function getActiveRoute(options = {} as Object) as Dynamic
+        r = options.router <> Invalid ? options.router : sgRouter.getRouter()
+        if rodash.isNotInvalid(r) then
+            return r@._getActiveRoute()
+        end if
+        return Invalid
+    end function
+
     ' Gets the router from the global scope. Creates the router if it does not exist.
     ' @since 0.0.1
     ' @return - The router
