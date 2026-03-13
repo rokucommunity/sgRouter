@@ -298,7 +298,13 @@ function _popTo(path = "" as Dynamic) as Dynamic
     m.__router_processingPopTo = true
     return promises.chain(promises.all(closePromises), { targetView: targetView, targetFromKeepAlive: targetFromKeepAlive }).then(function(_ as Dynamic, ctx as Dynamic) as Dynamic
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
-        return showView(ctx.targetView, ctx.targetFromKeepAlive)
+        ctx.targetView.route.navigationState = rodash.merge(ctx.targetView.route.navigationState, {
+            fromKeepAlive: ctx.targetFromKeepAlive
+            fromPopState: true
+            fromPushState: false
+            fromRedirect: false
+        })
+        return showView(ctx.targetView, true)
     end function).catch(function(error as Dynamic) as Dynamic
         m.__router_processingGoBack = false
         m.__router_processingPopTo = false
