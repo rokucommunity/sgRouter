@@ -77,7 +77,12 @@ It's the right place to do any setup work before a view is shown, such as kickin
 - `event.newRoute` — the incoming route (with updated params, query params, or hash)
 
 **What is `onRouteUpdate` and when does it fire?**
-`onRouteUpdate` fires whenever the router reuses the currently active route instead of destroying and rebuilding it. This includes navigating to the same route with different params or query params (when `allowReuse: true` is set), navigating with only the hash fragment changed, and navigating again to an identical path. Use this hook to update the view in place when the route changes but the underlying view instance is kept alive.
+`onRouteUpdate` fires in any situation where the current view instance is kept alive but the route changes. This includes:
+- navigating to the same route with different params or query params (when `allowReuse: true` is set on that route)
+- navigating again to the exact same path (including query string) as the current route
+- navigating where only the hash fragment (`#...`) changes while the path and query stay the same
+
+Use this hook to update the view in place when the route changes but the underlying view instance is kept alive.
 
 Unlike the other lifecycle hooks, `onRouteUpdate` receives a `RouteUpdateEvent` with both the old and new route (`event.oldRoute` and `event.newRoute`), so you can diff the two and respond to exactly what changed.
 
