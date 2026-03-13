@@ -10,8 +10,8 @@
 
 <p align="center">
   <a href="https://github.com/rokucommunity/sgRouter/actions?query=branch%3Amaster+workflow%3Abuild"><img src="https://img.shields.io/github/actions/workflow/status/rokucommunity/sgRouter/build.yml?logo=github&branch=master" alt="Build Status"/></a>
-  <a href="https://npmcharts.com/compare/sgrouter?minimal=true"><img src="https://img.shields.io/npm/dm/sgrouter.svg?logo=npm" alt="Downloads"/></a>
-  <a href="https://www.npmjs.com/package/sgrouter"><img src="https://img.shields.io/npm/v/sgrouter.svg?logo=npm" alt="Version"/></a>
+  <a href="https://npmcharts.com/compare/@rokucommunity/sgrouter?minimal=true"><img src="https://img.shields.io/npm/dm/@rokucommunity/sgrouter.svg?logo=npm" alt="Downloads"/></a>
+  <a href="https://www.npmjs.com/package/@rokucommunity/sgrouter"><img src="https://img.shields.io/npm/v/@rokucommunity/sgrouter.svg?logo=npm" alt="Version"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/rokucommunity/sgRouter.svg" alt="License"/></a>
   <a href="https://join.slack.com/t/rokudevelopers/shared_invite/zt-4vw7rg6v-NH46oY7hTktpRIBM_zGvwA"><img src="https://img.shields.io/badge/Slack-RokuCommunity-4A154B?logo=slack" alt="Slack Community"/></a>
 </p>
@@ -38,7 +38,7 @@ Install via **[ropm](https://www.npmjs.com/package/ropm)**:
 
 ```bash
 npx ropm install promises@npm:@rokucommunity/promises
-npx ropm install sgrouter
+npx ropm install sgRouter@npm:@rokucommunity/sgrouter
 ```
 
 ---
