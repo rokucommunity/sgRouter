@@ -3,7 +3,7 @@
 ## Getting Started & Installation
 
 **What is sgRouter?**
-sgRouter is a router for Roku SceneGraph applications. It maps URL-style paths to components, manages view lifecycles, and handles navigation state. It's designed to make view management in Roku apps more predictable and easier to reason about.
+sgRouter is a view lifecycle and stack management system for Roku SceneGraph applications that maps URL style paths to components and manages navigation state, with the goal of making view management in Roku apps more predictable and easier to reason about.
 
 **What are the requirements?**
 sgRouter requires [Roku Promises](https://github.com/rokucommunity/promises). Both packages can be installed via [ROPM](https://github.com/rokucommunity/ropm).
