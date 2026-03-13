@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="TestCanDeactivateGuard" extends="Node">
+    <interface>
+        <field id="returnValue" type="boolean" value="true" />
+        <field id="currentRoute" type="assocarray" />
+        <field id="targetRoute" type="assocarray" />
+        <function name="canDeactivate" />
+    </interface>
+</component>

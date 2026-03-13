@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="TestCanActivateRedirectGuard" extends="Node">
+    <interface>
+        <field id="redirectPath" type="string" />
+        <function name="canActivate" />
+    </interface>
+</component>

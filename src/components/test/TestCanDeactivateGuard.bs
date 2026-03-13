@@ -1,0 +1,14 @@
+function canDeactivate(context = Invalid as Dynamic) as Boolean
+    ' Capture context fields for test assertions
+    if context <> Invalid then
+        m.top.currentRoute = { url: context.currentRoute.path }
+        m.top.targetRoute = { url: context.targetRoute.path }
+    end if
+
+    ' Safely read returnValue from the component, falling back to false if unavailable
+    if m.top <> Invalid AND m.top.returnValue <> Invalid then
+        return m.top.returnValue
+    end if
+
+    return false
+end function

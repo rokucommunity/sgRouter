@@ -1,0 +1,10 @@
+function canActivate(_ = Invalid as Dynamic) as Dynamic
+    ' Defensively handle cases where m.top or returnValue is not set
+    if m.top = Invalid then
+        return Invalid
+    end if
+
+    ' At this point, init() should have ensured the field exists, but
+    ' we still guard against it being unset
+    return m.top.returnValue
+end function
