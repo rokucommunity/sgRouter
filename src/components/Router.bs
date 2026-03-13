@@ -558,12 +558,12 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         ' Handle the active view:
         ' - keepAlive AND not in closeViews: suspend and move to keepAliveViewTarget (awaited)
         ' - in closeViews: just hide; lifecycle is handled by the closeViews loop below
-        ' - otherwise: just hide
+        ' - otherwise: hide and fire onViewSuspend
         if m.__router_activeView <> Invalid then
             if NOT isActiveInCloseViews AND rodash.getBoolean(m.__router_activeView.route.routeConfig.keepAlive, "enabled") then
                 promisesToResolve.push(suspendView(m.__router_activeView))
             else
-                hideView(m.__router_activeView, false)
+                hideView(m.__router_activeView, NOT isActiveInCloseViews)
             end if
         end if
 
