@@ -39,7 +39,7 @@ Focus management in Roku SceneGraph apps is highly application-specific. Differe
 The recommended approach is to implement the `handleFocus` lifecycle hook in your view. This is called by the router when the view becomes active and should take over focus, making it the right place to set your initial focus logic.
 
 **What does `sgRouter.setFocus` do then?**
-`sgRouter.setFocus` records a focus request and immediately notifies the active view by calling its `handleFocus` hook with `{ routerFocused: true }`. The view is then responsible for moving focus to the appropriate node; only if the view does not handle focus will the router fall back to directly calling `setFocus(true)` on the outlet. It's not related to the internal focus management logic within individual views.
+`sgRouter.setFocus` records a focus request and, if there is an active view that implements focus handling, notifies that view (via its public `handleFocus` hook and internal `_handleFocus(...)` logic) so it can move focus to the appropriate node. `sgRouter.setFocus` itself does **not** fall back to calling `setFocus(true)` on the outlet or Router node when the view returns `false`. The only built-in fallback focus behavior is a `m.top.setFocus(true)` call on the Router node that runs after `showView(...)` completes. It's not related to the internal focus management logic within individual views.
 
 ---
 
