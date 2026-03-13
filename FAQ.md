@@ -72,7 +72,7 @@ It's the right place to do any setup work before a view is shown, such as kickin
 - `params.route.navigationState` — how the navigation was triggered (forward push, back, keepAlive resume, or redirect)
 
 **What is `onRouteUpdate` and when does it fire?**
-`onRouteUpdate` fires when you navigate to a route that is already active, with different params or a different hash. It only fires if the route has `allowReuse: true` set. This lets you update the view in place without destroying and rebuilding it.
+`onRouteUpdate` fires whenever the router reuses the currently active route instead of destroying and rebuilding it. This includes navigating to the same route with different params or query params (when `allowReuse: true` is set), navigating with only the hash fragment changed, and navigating again to an identical path. Use this hook to update the view in place when the route changes but the underlying view instance is kept alive.
 
 ---
 
