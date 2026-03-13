@@ -53,7 +53,7 @@ Views extending `sgRouter_View` can define the following:
 - `beforeViewClose(params)` — called before the view is destroyed
 - `onViewSuspend(params)` — called when a new view navigates on top of this one, or when the view is kept alive in the background via `keepAlive`
 - `onViewResume(params)` — called when the view returns to the top of the stack
-- `onRouteUpdate(event)` — called when navigating to the same route with different params or hash (requires `allowReuse: true`); receives `{ oldRoute, newRoute }` — see below
+- `onRouteUpdate(event)` — called when navigating to the same route; receives `{ oldRoute, newRoute }` — see below. To reuse the existing view when only route params or query params change, set `allowReuse: true` on the route. Hash-only navigations or re-navigating to the identical path can still trigger `onRouteUpdate` without `allowReuse`.
 - `handleFocus()` — called when the view becomes active and needs to handle focus
 
 **What is `beforeViewOpen` useful for?**
