@@ -367,13 +367,13 @@ Duplicate names at registration time log a warning and the first registration wi
 
 ---
 
-## 🧭 Route Snapshot in lifecycle hooks `beforeViewOpen`, `onViewOpen`, `onRouteUpdate`
+## 🧭 Route Snapshot in lifecycle hooks
 
 Every view lifecycle receives a **route snapshot** so your screen logic can react to the URL that triggered navigation.
 
 ### What you get in `params`
 
-`params` is constructed by the router just before the lifecycle is called, and includes:
+`beforeViewOpen`, `onViewOpen`, `beforeViewClose`, `onViewSuspend`, and `onViewResume` all receive a `params` object constructed by the router just before the lifecycle is called, which includes:
 
 ```text
 params.route.routeConfig          ' the matched route definition
@@ -387,7 +387,9 @@ params.route.navigationState      ' how this navigation was triggered:
   .fromRedirect                   '   true when arrived via a canActivate guard redirect
 ```
 
-The snapshot is sourced from the URL you navigated to (e.g. `"/details/movies/42?page=2&sort=trending#grid=poster"`). The router builds this object and passes it into `beforeViewOpen(params)`, `onViewOpen(params)`, and `onRouteUpdate(params)`.
+The snapshot is sourced from the URL you navigated to (e.g. `"/details/movies/42?page=2&sort=trending#grid=poster"`). The router builds this object and passes it into `beforeViewOpen(params)`, `onViewOpen(params)`, `beforeViewClose(params)`, `onViewSuspend(params)`, and `onViewResume(params)`.
+
+`onRouteUpdate` is different — it receives an object with both the old and new route (`params.oldRoute` and `params.newRoute`), so you can diff the two and respond to exactly what changed.
 
 ### Example: Using it in a Catalog view
 
