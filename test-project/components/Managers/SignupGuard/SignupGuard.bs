@@ -1,8 +1,8 @@
 import "pkg:/source/router.bs"
 
-' A canActivate guard that allows navigation to proceed so the destination
-' lands in the history stack, then redirects to /signup after NavigationEnd.
-' This lets VerifyEmailScreen use sgRouter.popTo() to return to the original destination.
+' A canActivate guard that immediately redirects unauthenticated users to /signup,
+' cancelling the attempted navigation. The original destination path is passed as
+' redirectToOnVerify so VerifyEmailScreen can navigate back to it after verification.
 function canActivate(route = {} as Object) as Dynamic
 	if m.global.AuthManager.isEmailVerified then
 		return true
