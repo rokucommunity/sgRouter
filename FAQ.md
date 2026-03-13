@@ -50,9 +50,9 @@ Views extending `sgRouter_View` can define the following:
 
 - `beforeViewOpen(params)` — called before the view is shown, useful for async setup or API calls
 - `onViewOpen(params)` — called when the view opens
-- `beforeViewClose()` — called before the view is destroyed
-- `onViewSuspend()` — called when a new view navigates on top of this one, or when the view is kept alive in the background via `keepAlive`
-- `onViewResume()` — called when the view returns to the top of the stack
+- `beforeViewClose(params)` — called before the view is destroyed
+- `onViewSuspend(params)` — called when a new view navigates on top of this one, or when the view is kept alive in the background via `keepAlive`
+- `onViewResume(params)` — called when the view returns to the top of the stack
 - `onRouteUpdate(params)` — called when navigating to the same route with different params or hash (requires `allowReuse: true`)
 - `handleFocus()` — called when the view becomes active and needs to handle focus
 
@@ -63,7 +63,7 @@ It's the right place to do any setup work before a view is shown, such as kickin
 `onViewSuspend` is called when a view is pushed down the stack by a new view, or when it is kept alive in the background via `keepAlive`. In both cases the view is still alive and can be resumed later. `beforeViewClose` is called when a view is about to be permanently destroyed.
 
 **What params does each lifecycle hook receive?**
-`beforeViewOpen`, `onViewOpen`, and `onRouteUpdate` all receive a route snapshot containing:
+`beforeViewOpen`, `onViewOpen`, `beforeViewClose`, `onViewSuspend`, `onViewResume`, and `onRouteUpdate` all receive a `params` object containing a route snapshot:
 
 - `params.route.routeConfig` — the matched route definition
 - `params.route.routeParams` — values extracted from URL placeholders like `:id`
