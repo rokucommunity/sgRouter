@@ -160,6 +160,146 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     return true
 end function
 
+' Function to unwind the history stack to a previously-visited route
+' @param {String|Object} path - The path to pop to, or an AA for named routes: { name: String, params: Object }
+' @returns {Dynamic} - A promise that resolves when navigation completes, or rejects if the path is not in the stack
+function _popTo(path = "" as Dynamic) as Dynamic
+    if m.__router_navigationInProgress then return promises.reject({ message: "Navigation already in progress" })
+    m.__router_processingGoBack = true
+
+    ' Named route resolution (same pattern as _navigateTo)
+    if rodash.isAA(path) then
+        name = path.name
+        params = path.params
+        if NOT rodash.isNonEmptyString(name) then
+            print "[WARN] sgRouter: popTo AA arg must include a non-empty ""name"" key"
+            m.__router_processingGoBack = false
+            return promises.reject({ message: "popTo AA arg must include a non-empty ""name"" key" })
+        end if
+        if m.__router_nameMap[name] = Invalid then
+            print "[WARN] sgRouter: no route found with name """ + name + """"
+            m.__router_processingGoBack = false
+            return promises.reject({ message: "no route found with name """ + name + """" })
+        end if
+        routeConfig = m.__router_nameMap[name]
+        resolved = resolveNamedRoutePath(name, routeConfig.pattern, params)
+        if resolved = Invalid then
+            m.__router_processingGoBack = false
+            return promises.reject({ message: "missing required param for named route """ + name + """" })
+        end if
+        path = resolved
+    end if
+
+    if NOT rodash.isNonEmptyString(path) then
+        m.__router_processingGoBack = false
+        return promises.reject({ message: "Invalid path" })
+    end if
+
+    ' Strip hash — history stack paths never contain hashes
+    targetHash = getHashParam(path)
+    targetPath = path
+    if rodash.isNonEmptyString(targetHash) then
+        targetPath = path.replace("#" + targetHash, "")
+    end if
+
+    ' Find the last occurrence in historyStack before the current view (search backwards, skip current)
+    targetIndex = -1
+    for i = m.__router_historyStack.count() - 2 to 0 step -1
+        if m.__router_historyStack[i] = targetPath then
+            targetIndex = i
+            exit for
+        end if
+    end for
+
+    if targetIndex = -1 then
+        m.__router_processingGoBack = false
+        return promises.reject({ message: "popTo: path not found in history stack: " + targetPath })
+    end if
+
+    ' Find the target view node — search newest-first in viewTarget, then keepAliveViewTarget
+    targetView = Invalid
+    targetFromKeepAlive = false
+    viewTargetChildren = rodash.getNodeChildren(m.__router_viewTarget)
+    for i = viewTargetChildren.count() - 1 to 0 step -1
+        if viewTargetChildren[i].route.path = targetPath then
+            targetView = viewTargetChildren[i]
+            exit for
+        end if
+    end for
+    if targetView = Invalid then
+        for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
+            if v.route.path = targetPath then
+                targetView = v
+                targetFromKeepAlive = true
+                exit for
+            end if
+        end for
+    end if
+
+    if targetView = Invalid then
+        m.__router_processingGoBack = false
+        return promises.reject({ message: "popTo: view not found for path: " + targetPath })
+    end if
+
+    ' Collect paths of views to close (stack indices targetIndex+1 to end)
+    pathsToClose = {}
+    for i = targetIndex + 1 to m.__router_historyStack.count() - 1
+        pathsToClose[m.__router_historyStack[i]] = true
+    end for
+
+    ' Find all view nodes to close (exclude target view by id in case path appears above target too)
+    viewsToClose = []
+    for each v in rodash.getNodeChildren(m.__router_viewTarget)
+        if pathsToClose[v.route.path] = true AND v.id <> targetView.id then
+            viewsToClose.push(v)
+        end if
+    end for
+    for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
+        if pathsToClose[v.route.path] = true AND v.id <> targetView.id then
+            viewsToClose.push(v)
+        end if
+    end for
+
+    ' Reparent target from keepAliveViewTarget to viewTarget if needed
+    if targetFromKeepAlive then
+        targetView.reparent(m.__router_viewTarget, true)
+    end if
+
+    ' Dispatch NavigationStart
+    dispatchRouterState(RouterState.NavigationStart, {
+        id: targetView.route.id
+        route: targetView.route
+    })
+
+    ' Truncate history stack to just up to and including the target
+    newStack = []
+    for i = 0 to targetIndex
+        newStack.push(m.__router_historyStack[i])
+    end for
+    m.__router_historyStack = newStack
+
+    ' Close all views above the target (destroy, even keepAlive ones)
+    closePromises = []
+    for each cv in viewsToClose
+        closePromises.push(closeView(cv))
+    end for
+
+    return promises.chain(promises.all(closePromises), { targetView: targetView, targetFromKeepAlive: targetFromKeepAlive }).then(function(_ as Dynamic, ctx as Dynamic) as Dynamic
+        m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
+        ctx.targetView.route.navigationState = rodash.merge(ctx.targetView.route.navigationState, {
+            fromPopState: false
+            fromPushState: false
+            fromKeepAlive: ctx.targetFromKeepAlive
+            fromRedirect: false
+        })
+        return showView(ctx.targetView, ctx.targetFromKeepAlive)
+    end function).catch(function(error as Dynamic) as Dynamic
+        m.__router_processingGoBack = false
+        m.__router_navigationInProgress = false
+        return promises.reject(error)
+    end function).toPromise()
+end function
+
 ' Function to navigate to a specific route
 ' @param {String|Object} path - The path to navigate to, or an AA for named routes: { name: String, params: Object }
 ' @param {Object} options - The route config overrides and navigation options

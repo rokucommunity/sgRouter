@@ -10,6 +10,7 @@
         <function name="_addRoutes" />
         <function name="_getRoutes" />
         <function name="_navigateTo" />
+        <function name="_popTo" />
         <function name="_goBack" />
         <function name="_setFocus" />
         <function name="_destroy" />
