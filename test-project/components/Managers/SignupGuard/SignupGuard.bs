@@ -9,5 +9,5 @@ function canActivate(route = {} as Object) as Dynamic
 	end if
 
 	ar = sgRouter.getActiveRoute()
-	return sgRouter.createRedirectCommand(`/signup?redirectToOnVerify=${route.path}`)
+	return sgRouter.createRedirectCommand(`/signup?redirectToOnVerify=${ar.path}`)
 end function

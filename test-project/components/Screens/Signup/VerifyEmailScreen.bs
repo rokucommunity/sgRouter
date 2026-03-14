@@ -18,5 +18,7 @@ end function
 
 sub onButtonPress(event as Object)
 	m.global.AuthManager.isEmailVerified = true
-	sgRouter.popTo(m.top.route.queryParams.redirectToOnVerify)
+	redirectTo = m.top.route.queryParams.redirectToOnVerify
+	if redirectTo = Invalid or redirectTo = "" then redirectTo = "/"
+	sgRouter.popTo(redirectTo)
 end sub

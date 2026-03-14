@@ -17,5 +17,7 @@ function beforeViewClose(params = Invalid as Dynamic) as Dynamic
 end function
 
 sub onButtonPress(event as Object)
-	sgRouter.navigateTo(`/signup/verify?redirectToOnVerify=${m.top.route.queryParams.redirectToOnVerify}`)
+	redirectTo = m.top.route.queryParams.redirectToOnVerify
+	if redirectTo = Invalid or redirectTo = "" then redirectTo = "/"
+	sgRouter.navigateTo(`/signup/verify?redirectToOnVerify=${redirectTo}`)
 end sub
