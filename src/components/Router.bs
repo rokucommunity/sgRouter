@@ -623,10 +623,16 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
     toResolve = Invalid
     if keepAliveView <> Invalid then
         view = keepAliveView
-        ' Track previous ids so stale historyStack entries can still find this node after the id changes
+        ' Track previous ids so stale historyStack entries can still find this node after the id changes.
+        ' Cap the array to the history stack length: no stale entry older than the stack can ever be
+        ' looked up, so entries beyond that count are unreachable and can be discarded.
         prevIds = view.previousNodeIds
         if NOT rodash.isArray(prevIds) then prevIds = []
         prevIds.push(view.id)
+        maxPrevIds = m.__router_historyStack.count()
+        while prevIds.count() > maxPrevIds
+            prevIds.shift()
+        end while
         view.previousNodeIds = prevIds
         view.id = route.id
         view.route = route
