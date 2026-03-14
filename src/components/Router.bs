@@ -260,10 +260,10 @@ function _popTo(path = "" as Dynamic) as Dynamic
     end for
     m.__router_historyStack = newStack
 
-    ' Close views above the target; suspend keepAlive views rather than destroying them
+    ' Close all views above the target — always destroy, never suspend (even keepAlive)
     closePromises = []
     for each cv in viewsToClose
-        closePromises.push(closeOrSuspendView(cv))
+        closePromises.push(closeView(cv))
     end for
 
     m.__router_processingPopTo = true
