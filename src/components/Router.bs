@@ -45,6 +45,9 @@ sub _destroy(_ = Invalid as Dynamic)
 
     m.__router_activeView = Invalid
     m.__router_focusRequestMade = false
+    for each guardName in m.__router_guardInstances
+        rodash.removeNode(m.__router_guardInstances[guardName])
+    end for
     m.__router_guardInstances = {}
     m.__router_historyStack = []
     m.__router_nameMap = {}
@@ -157,12 +160,7 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
 
     promises.chain(closePromise, viewToOpen).then(sub(_ as Dynamic, view as Dynamic)
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
-        view.route.navigationState = rodash.merge(view.route.navigationState, {
-            fromKeepAlive: false
-            fromPopState: true
-            fromPushState: false
-            fromRedirect: false
-        })
+        _applyPopNavigationState(view)
         showView(view, true)
     end sub)
 
@@ -173,7 +171,7 @@ end function
 ' @param {String|Object} path - The path to pop to, or an AA for named routes: { name: String, params: Object }
 ' @returns {Dynamic} - A promise that resolves when navigation completes, or rejects if the path is not in the stack
 function _popTo(path = "" as Dynamic) as Dynamic
-    if m.__router_navigationInProgress then return promises.reject({ message: "Navigation already in progress" })
+    if m.__router_navigationInProgress then return _rejectNavigationInProgress()
     m.__router_processingGoBack = true
 
     ' Named route resolution (same pattern as _navigateTo)
@@ -269,12 +267,7 @@ function _popTo(path = "" as Dynamic) as Dynamic
     m.__router_processingPopTo = true
     return promises.chain(promises.all(closePromises), { targetView: targetView, targetFromKeepAlive: targetFromKeepAlive }).then(function(_ as Dynamic, ctx as Dynamic) as Dynamic
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
-        ctx.targetView.route.navigationState = rodash.merge(ctx.targetView.route.navigationState, {
-            fromKeepAlive: ctx.targetFromKeepAlive
-            fromPopState: true
-            fromPushState: false
-            fromRedirect: false
-        })
+        _applyPopNavigationState(ctx.targetView, ctx.targetFromKeepAlive)
         return showView(ctx.targetView, true)
     end function).catch(function(error as Dynamic) as Dynamic
         m.__router_processingGoBack = false
@@ -289,7 +282,7 @@ end function
 ' @param {Object} options - The route config overrides and navigation options
 ' @returns {Dynamic} - The result of the navigation
 function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
-    if m.__router_navigationInProgress then return promises.reject({ message: "Navigation already in progress" })
+    if m.__router_navigationInProgress then return _rejectNavigationInProgress()
 
     if NOT rodash.isNonEmptyAA(path) AND NOT rodash.isNonEmptyString(path) then
         return promises.reject({ message: "Invalid path" })
@@ -341,6 +334,8 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
             error: message
             route: newRoute
         })
+
+        return promises.reject(message)
     end if
 
     if NOT rodash.isNonEmptyString(newRoute.routeConfig.pattern) then
@@ -810,7 +805,6 @@ sub onFocusChildChanged(event as Object)
     if m.__router_navigationInProgress then return
 
     if NOT m.__router_processingGoBack AND m.__router_activeView <> Invalid AND NOT inFocusChain AND m.__router_focusRequestMade <> inFocusChain then
-        m.__router_focusRequestMade = inFocusChain
         m.__router_activeView@._handleFocus({
             routerFocused: inFocusChain
         })
@@ -885,6 +879,22 @@ end function
 '*************************************************************************
 '#region *** PRIVATE Helper Functions
 '*************************************************************************
+
+' Returns a rejected promise for the "navigation already in progress" guard used in
+' _popTo and _navigateTo. Centralises the message string in one place.
+function _rejectNavigationInProgress() as Dynamic
+    return promises.reject({ message: "Navigation already in progress" })
+end function
+
+' Stamps a pop-style navigationState onto a view's route, used by both _goBack and _popTo.
+sub _applyPopNavigationState(view as Object, fromKeepAlive = false as Boolean)
+    view.route.navigationState = rodash.merge(view.route.navigationState, {
+        fromKeepAlive: fromKeepAlive
+        fromPopState: true
+        fromPushState: false
+        fromRedirect: false
+    })
+end sub
 
 ' Searches viewTarget then keepAliveViewTarget for a view with the given node ID.
 ' Returns { view: node, fromKeepAlive: Boolean } — view is Invalid if not found.
