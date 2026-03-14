@@ -51,8 +51,8 @@ sub init()
         }] },
         { pattern: "/signup", component: "SignupScreen" },
         { pattern: "/signup/verify", component: "VerifyEmailScreen" },
-        { pattern: "/details/:type/:id", component: "DetailsScreen", name: "DetailsView", keepAlive: { enabled: true }, canActivate: ["SignupGuard"] },
-        { pattern: "/details/:type/:id/cast", component: "CastDetailsScreen", canActivate: ["SignupGuard"] },
+        { pattern: "/details/:type/:id", component: "DetailsScreen", name: "DetailsView", keepAlive: { enabled: true }, canActivate: [m.global.AuthManager, "SignupGuard"] },
+        { pattern: "/details/:type/:id/cast", component: "CastDetailsScreen", canActivate: [m.global.AuthManager, "SignupGuard"] },
         { pattern: "/:screenName", component: "DefaultScreen" }
     ])
 
