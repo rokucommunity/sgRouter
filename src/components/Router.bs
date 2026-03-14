@@ -116,23 +116,9 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     previousNodeId = previousEntry.nodeId
 
     ' Search viewTarget first, then keepAliveViewTarget
-    viewToOpen = Invalid
-    viewToOpenFromKeepAlive = false
-    for each v in rodash.getNodeChildren(m.__router_viewTarget)
-        if v.id = previousNodeId then
-            viewToOpen = v
-            exit for
-        end if
-    end for
-    if viewToOpen = Invalid then
-        for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
-            if v.id = previousNodeId then
-                viewToOpen = v
-                viewToOpenFromKeepAlive = true
-                exit for
-            end if
-        end for
-    end if
+    foundView = findViewByNodeId(previousNodeId)
+    viewToOpen = foundView.view
+    viewToOpenFromKeepAlive = foundView.fromKeepAlive
     ' KeepAlive views can have their id reassigned by addViewToStack on subsequent forward navigations.
     ' If the nodeId is stale, check previousNodeIds on each keepAlive view to find the right node.
     if viewToOpen = Invalid then
@@ -167,12 +153,7 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
 
     ' Close or suspend the current view
     viewToClose = m.__router_activeView
-    closePromise = Invalid
-    if rodash.getBoolean(viewToClose.route.routeConfig.keepAlive, "enabled") then
-        closePromise = suspendView(viewToClose)
-    else
-        closePromise = closeView(viewToClose)
-    end if
+    closePromise = closeOrSuspendView(viewToClose)
 
     promises.chain(closePromise, viewToOpen).then(sub(_ as Dynamic, view as Dynamic)
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
@@ -197,25 +178,12 @@ function _popTo(path = "" as Dynamic) as Dynamic
 
     ' Named route resolution (same pattern as _navigateTo)
     if rodash.isAA(path) then
-        name = path.name
-        params = path.params
-        if NOT rodash.isNonEmptyString(name) then
-            print "[WARN] sgRouter: popTo AA arg must include a non-empty ""name"" key"
+        result = resolveNamedRouteArg(path, "popTo")
+        if result.error <> Invalid then
             m.__router_processingGoBack = false
-            return promises.reject({ message: "popTo AA arg must include a non-empty ""name"" key" })
+            return promises.reject(result.error)
         end if
-        if m.__router_nameMap[name] = Invalid then
-            print "[WARN] sgRouter: no route found with name """ + name + """"
-            m.__router_processingGoBack = false
-            return promises.reject({ message: "no route found with name """ + name + """" })
-        end if
-        routeConfig = m.__router_nameMap[name]
-        resolved = resolveNamedRoutePath(name, routeConfig.pattern, params)
-        if resolved = Invalid then
-            m.__router_processingGoBack = false
-            return promises.reject({ message: "missing required param for named route """ + name + """" })
-        end if
-        path = resolved
+        path = result.resolved
     end if
 
     if NOT rodash.isNonEmptyString(path) then
@@ -246,23 +214,9 @@ function _popTo(path = "" as Dynamic) as Dynamic
 
     ' Find the target view node by nodeId — unambiguous even when path appears multiple times
     targetNodeId = m.__router_historyStack[targetIndex].nodeId
-    targetView = Invalid
-    targetFromKeepAlive = false
-    for each v in rodash.getNodeChildren(m.__router_viewTarget)
-        if v.id = targetNodeId then
-            targetView = v
-            exit for
-        end if
-    end for
-    if targetView = Invalid then
-        for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
-            if v.id = targetNodeId then
-                targetView = v
-                targetFromKeepAlive = true
-                exit for
-            end if
-        end for
-    end if
+    foundView = findViewByNodeId(targetNodeId)
+    targetView = foundView.view
+    targetFromKeepAlive = foundView.fromKeepAlive
 
     if targetView = Invalid then
         m.__router_processingGoBack = false
@@ -309,11 +263,7 @@ function _popTo(path = "" as Dynamic) as Dynamic
     ' Close views above the target; suspend keepAlive views rather than destroying them
     closePromises = []
     for each cv in viewsToClose
-        if rodash.getBoolean(cv.route.routeConfig.keepAlive, "enabled") then
-            closePromises.push(suspendView(cv))
-        else
-            closePromises.push(closeView(cv))
-        end if
+        closePromises.push(closeOrSuspendView(cv))
     end for
 
     m.__router_processingPopTo = true
@@ -347,22 +297,9 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
 
     ' Named route resolution: if path is an AA with a "name" key, resolve to a literal path string
     if rodash.isAA(path) then
-        name = path.name
-        params = path.params
-        if NOT rodash.isNonEmptyString(name) then
-            print "[WARN] sgRouter: navigateTo AA arg must include a non-empty ""name"" key"
-            return promises.reject({ message: "navigateTo AA arg must include a non-empty ""name"" key" })
-        end if
-        if m.__router_nameMap[name] = Invalid then
-            print "[WARN] sgRouter: no route found with name """ + name + """"
-            return promises.reject({ message: "no route found with name """ + name + """" })
-        end if
-        routeConfig = m.__router_nameMap[name]
-        resolved = resolveNamedRoutePath(name, routeConfig.pattern, params)
-        if resolved = Invalid then
-            return promises.reject({ message: "missing required param for named route """ + name + """" })
-        end if
-        path = resolved
+        result = resolveNamedRouteArg(path, "navigateTo")
+        if result.error <> Invalid then return promises.reject(result.error)
+        path = result.resolved
     end if
 
     routeConfigOverrides = rodash.getAA(options, "routeConfigOverrides")
@@ -832,6 +769,14 @@ function suspendView(view = Invalid as Dynamic) as Dynamic
     end function, { view: view })
 end function
 
+' Closes or suspends a view depending on whether its route has keepAlive enabled.
+function closeOrSuspendView(view as Object) as Dynamic
+    if rodash.getBoolean(view.route.routeConfig.keepAlive, "enabled") then
+        return suspendView(view)
+    end if
+    return closeView(view)
+end function
+
 ' Tells the view to hide and fire the onViewSuspend lifecycle method if onSuspend is true
 ' @param {Object} view - The view to hide
 ' @param {Boolean} onSuspend - Whether to fire the onViewSuspend lifecycle method
@@ -935,6 +880,18 @@ end function
 '#region *** PRIVATE Helper Functions
 '*************************************************************************
 
+' Searches viewTarget then keepAliveViewTarget for a view with the given node ID.
+' Returns { view: node, fromKeepAlive: Boolean } — view is Invalid if not found.
+function findViewByNodeId(nodeId as String) as Object
+    for each v in rodash.getNodeChildren(m.__router_viewTarget)
+        if v.id = nodeId then return { view: v, fromKeepAlive: false }
+    end for
+    for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
+        if v.id = nodeId then return { view: v, fromKeepAlive: true }
+    end for
+    return { view: Invalid, fromKeepAlive: false }
+end function
+
 ' Resolve a named route to a literal path string.
 ' Substitutes :param segments from params AA; leftover params become query string.
 ' Returns Invalid if a required :param segment has no matching value in params.
@@ -978,6 +935,32 @@ function resolveNamedRoutePath(name as String, pattern as String, params = Inval
     end if
 
     return resolvedPath
+end function
+
+' Resolves a named-route AA arg { name, params } to a literal path string.
+' Returns { resolved: String } on success, or { error: { message: String } } on failure.
+' Callers must reset any in-progress flags before returning the rejection promise.
+function resolveNamedRouteArg(path as Dynamic, callerName as String) as Object
+    if NOT rodash.isAA(path) then return { resolved: path }
+
+    name = path.name
+    params = path.params
+    if NOT rodash.isNonEmptyString(name) then
+        msg = callerName + " AA arg must include a non-empty ""name"" key"
+        print "[WARN] sgRouter: " + msg
+        return { error: { message: msg } }
+    end if
+    if m.__router_nameMap[name] = Invalid then
+        msg = "no route found with name """ + name + """"
+        print "[WARN] sgRouter: " + msg
+        return { error: { message: msg } }
+    end if
+    routeConfig = m.__router_nameMap[name]
+    resolved = resolveNamedRoutePath(name, routeConfig.pattern, params)
+    if resolved = Invalid then
+        return { error: { message: "missing required param for named route """ + name + """" } }
+    end if
+    return { resolved: resolved }
 end function
 
 ' Helper function to create a route object
