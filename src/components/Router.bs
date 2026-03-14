@@ -111,25 +111,42 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
         return false
     end if
 
-    ' Find the previous path from historyStack
-    previousPath = m.__router_historyStack[m.__router_historyStack.count() - 2]
+    ' Find the previous entry from historyStack
+    previousEntry = m.__router_historyStack[m.__router_historyStack.count() - 2]
+    previousNodeId = previousEntry.nodeId
 
     ' Search viewTarget first, then keepAliveViewTarget
     viewToOpen = Invalid
     viewToOpenFromKeepAlive = false
     for each v in rodash.getNodeChildren(m.__router_viewTarget)
-        if v.route.path = previousPath then
+        if v.id = previousNodeId then
             viewToOpen = v
             exit for
         end if
     end for
     if viewToOpen = Invalid then
         for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
-            if v.route.path = previousPath then
+            if v.id = previousNodeId then
                 viewToOpen = v
                 viewToOpenFromKeepAlive = true
                 exit for
             end if
+        end for
+    end if
+    ' KeepAlive views can have their id reassigned by addViewToStack on subsequent forward navigations.
+    ' If the nodeId is stale, check previousNodeIds on each keepAlive view to find the right node.
+    if viewToOpen = Invalid then
+        for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
+            if rodash.isArray(v.previousNodeIds) then
+                for each prevId in v.previousNodeIds
+                    if prevId = previousNodeId then
+                        viewToOpen = v
+                        viewToOpenFromKeepAlive = true
+                        exit for
+                    end if
+                end for
+            end if
+            if viewToOpen <> Invalid then exit for
         end for
     end if
 
@@ -216,7 +233,7 @@ function _popTo(path = "" as Dynamic) as Dynamic
     ' Find the last occurrence in historyStack before the current view (search backwards, skip current)
     targetIndex = -1
     for i = m.__router_historyStack.count() - 2 to 0 step -1
-        if m.__router_historyStack[i] = targetPath then
+        if m.__router_historyStack[i].path = targetPath then
             targetIndex = i
             exit for
         end if
@@ -227,19 +244,19 @@ function _popTo(path = "" as Dynamic) as Dynamic
         return promises.reject({ message: "popTo: path not found in history stack: " + targetPath })
     end if
 
-    ' Find the target view node — search newest-first in viewTarget, then keepAliveViewTarget
+    ' Find the target view node by nodeId — unambiguous even when path appears multiple times
+    targetNodeId = m.__router_historyStack[targetIndex].nodeId
     targetView = Invalid
     targetFromKeepAlive = false
-    viewTargetChildren = rodash.getNodeChildren(m.__router_viewTarget)
-    for i = viewTargetChildren.count() - 1 to 0 step -1
-        if viewTargetChildren[i].route.path = targetPath then
-            targetView = viewTargetChildren[i]
+    for each v in rodash.getNodeChildren(m.__router_viewTarget)
+        if v.id = targetNodeId then
+            targetView = v
             exit for
         end if
     end for
     if targetView = Invalid then
         for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
-            if v.route.path = targetPath then
+            if v.id = targetNodeId then
                 targetView = v
                 targetFromKeepAlive = true
                 exit for
@@ -252,21 +269,21 @@ function _popTo(path = "" as Dynamic) as Dynamic
         return promises.reject({ message: "popTo: view not found for path: " + targetPath })
     end if
 
-    ' Collect paths of views to close (stack indices targetIndex+1 to end)
-    pathsToClose = {}
+    ' Collect node IDs to close (stack entries above targetIndex)
+    nodeIdsToClose = {}
     for i = targetIndex + 1 to m.__router_historyStack.count() - 1
-        pathsToClose[m.__router_historyStack[i]] = true
+        nodeIdsToClose[m.__router_historyStack[i].nodeId] = true
     end for
 
-    ' Find all view nodes to close (exclude target view by id in case path appears above target too)
+    ' Find all view nodes to close by exact node ID — safe when the same path appears above and below targetIndex
     viewsToClose = []
     for each v in rodash.getNodeChildren(m.__router_viewTarget)
-        if pathsToClose[v.route.path] = true AND v.id <> targetView.id then
+        if nodeIdsToClose[v.id] = true then
             viewsToClose.push(v)
         end if
     end for
     for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
-        if pathsToClose[v.route.path] = true AND v.id <> targetView.id then
+        if nodeIdsToClose[v.id] = true then
             viewsToClose.push(v)
         end if
     end for
@@ -289,10 +306,14 @@ function _popTo(path = "" as Dynamic) as Dynamic
     end for
     m.__router_historyStack = newStack
 
-    ' Close all views above the target (destroy, even keepAlive ones)
+    ' Close views above the target; suspend keepAlive views rather than destroying them
     closePromises = []
     for each cv in viewsToClose
-        closePromises.push(closeView(cv))
+        if rodash.getBoolean(cv.route.routeConfig.keepAlive, "enabled") then
+            closePromises.push(suspendView(cv))
+        else
+            closePromises.push(closeView(cv))
+        end if
     end for
 
     m.__router_processingPopTo = true
@@ -665,6 +686,11 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
     toResolve = Invalid
     if keepAliveView <> Invalid then
         view = keepAliveView
+        ' Track previous ids so stale historyStack entries can still find this node after the id changes
+        prevIds = view.previousNodeIds
+        if NOT rodash.isArray(prevIds) then prevIds = []
+        prevIds.push(view.id)
+        view.previousNodeIds = prevIds
         view.id = route.id
         view.route = route
         toResolve = promises.resolve(Invalid)
@@ -882,7 +908,7 @@ function showView(view as Object, onResume = false as Boolean) as Dynamic
                     end if
 
                     if context.view.route.navigationState.fromPushState then
-                        m.__router_historyStack.push(context.view.route.path)
+                        m.__router_historyStack.push({ path: context.view.route.path, nodeId: context.view.id })
                     end if
                 end if
             end if

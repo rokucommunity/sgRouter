@@ -3,6 +3,7 @@
     <interface>
         <field id="router" type="node" />
         <field id="route" type="node" />
+        <field id="previousNodeIds" type="array" />
 
         <!-- DO NOT CALL CALLFUNCS DIRECTLY-->
         <function name="_beforeViewOpen" />
