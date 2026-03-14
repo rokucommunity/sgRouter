@@ -864,6 +864,42 @@ namespace tests
         end function
 
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("getActiveRoute")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @it("returns Invalid when no navigation has occurred yet")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" },
+            ])
+
+            result = sgRouter.getActiveRoute({ router: m.router })
+            m.assertInvalid(result)
+        end function
+
+        @async()
+        @it("returns the active route after navigation")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" },
+                { pattern: "/beta", component: "View" },
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_result, m)
+                activeRoute = sgRouter.getActiveRoute({ router: m.router })
+                m.assertNotInvalid(activeRoute)
+                m.assertEqual(activeRoute.path, "/alpha")
+            end function).toPromise()
+        end function
+
+        @it("returns Invalid when no router is found in the chain")
+        function _() 'bs:disable-line 1026 LINT1026
+            result = sgRouter.getActiveRoute({ router: Invalid })
+            m.assertInvalid(result)
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("getRoutes")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @it("getRoutes")
