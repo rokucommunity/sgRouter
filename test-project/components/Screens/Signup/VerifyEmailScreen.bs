@@ -1,0 +1,24 @@
+sub init()
+	m.buttonGroup = m.top.findNode("buttonGroup")
+	m.buttonGroup.buttons = ["I've Verified My Email"]
+	m.buttonGroup.observeField("buttonSelected", "onButtonPress")
+end sub
+
+function handleFocus(data as Object) as Boolean
+	if data.routerFocused then
+		return m.buttonGroup.setFocus(true)
+	end if
+	return false
+end function
+
+function beforeViewClose(params = Invalid as Dynamic) as Dynamic
+	m.buttonGroup.unobserveField("buttonSelected")
+	return promises.resolve(Invalid)
+end function
+
+sub onButtonPress(event as Object)
+	m.global.AuthManager.isEmailVerified = true
+	redirectTo = m.top.route.queryParams.redirectToOnVerify
+	if redirectTo = Invalid or redirectTo = "" then redirectTo = "/"
+	sgRouter.popTo(redirectTo)
+end sub

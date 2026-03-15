@@ -25,7 +25,7 @@
 - **Named routes** — navigate by intent, not by hardcoded path strings
 - **Route guards** (`canActivate`) for protected screens
 - **View lifecycle hooks** for fine-grained control
-- **Stack management** (navigation, suspension, resume)
+- **Stack management** (navigation, suspension, resume, and `popTo` unwinding)
 - **Observable router state** for debugging or analytics
 
 ---
@@ -436,6 +436,91 @@ The route snapshot is assembled by the router by parsing:
 - the **hash** → `hash`
 
 That structured object is then provided to the view lifecycles mentioned above. This keeps your screens URL-driven and easy to test (you can navigate with different URLs and assert behavior based on `params`).
+
+---
+
+## ⏪ popTo — Unwind to a Previous Route
+
+`popTo` unwinds the navigation stack to the last occurrence of a previously-visited route, closing every view above it. It is useful for multi-step flows (e.g. checkout, onboarding, sign-in) where you want to jump back to a known entry point without calling `goBack` repeatedly.
+
+### Basic usage
+
+```brightscript
+' Unwind to /home, closing all views above it
+sgRouter.popTo("/home")
+```
+
+`popTo` returns a promise that resolves when the target view is active, or rejects on error. Any hash fragment in the path is stripped automatically — it never affects matching.
+
+```brightscript
+' Hash is ignored for matching; both lines resolve to the same stack entry
+sgRouter.popTo("/home")
+sgRouter.popTo("/home#section1")
+```
+
+### Query parameters are part of the match
+
+History stack entries include query parameters. If you navigated to `/search?q=roku`, you must include the exact query string to match it:
+
+```brightscript
+sgRouter.navigateTo("/search?q=roku")
+' ...later...
+sgRouter.popTo("/search?q=roku")   ' matches
+sgRouter.popTo("/search")          ' does NOT match — rejects
+```
+
+### Named route usage
+
+`popTo` accepts the same named-route AA as `navigateTo`:
+
+```brightscript
+sgRouter.popTo({ name: "movieDetail", params: { id: 42 } })
+' Resolves to /movies/42, then matches against the stack
+```
+
+Static named routes require no params:
+
+```brightscript
+sgRouter.popTo({ name: "home" })
+```
+
+### Stack behaviour
+
+- **Matching** — searches backwards from the entry below the current view for the last occurrence of the path. If a path appears multiple times, the most recent (deepest) prior visit is the target.
+- **Views above the target** — all closed and destroyed, including any `keepAlive` views that were suspended. No views above the target are preserved.
+- **The target view** — if it was suspended in `keepAliveViewTarget` it is restored to `viewTarget`; `onViewResume` fires as normal.
+- **History stack** — truncated to `[0..targetIndex]` before close promises settle. A `goBack` immediately after `popTo` sees only the entries up to and including the target.
+
+```brightscript
+' Stack: /home → /catalog → /details/42 → /checkout
+sgRouter.popTo("/catalog")
+' Stack after: /home → /catalog
+' /details/42 and /checkout are destroyed; /catalog is the active view
+```
+
+### Error cases
+
+`popTo` rejects (returns a rejected promise) in the following situations:
+
+| Situation | Rejection message |
+|---|---|
+| Path not found in the history stack | `"popTo: path not found in history stack: <path>"` |
+| Target is the current (top) view | `"popTo: path not found in history stack: <path>"` |
+| Another navigation is already in progress | `"Navigation already in progress"` |
+| Named route name does not exist | `"no route found with name \"<name>\""` |
+| Named route is missing a required param | `"missing required param for named route \"<name>\""` |
+| Empty/invalid path | `"Invalid path"` |
+
+```brightscript
+promises.chain(sgRouter.popTo("/checkout"), m)
+    .then(function(_, m)
+        ' successfully popped
+    end function)
+    .catch(function(error, m)
+        print "popTo failed: " + error.message
+    end function)
+    .toPromise()
+```
 
 ---
 ## 💬 Community & Support

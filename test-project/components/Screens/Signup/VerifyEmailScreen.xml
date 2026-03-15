@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="VerifyEmailScreen" extends="View">
+	<children>
+		<Group translation="[196, 96]">
+			<Label id="title" font="font:MediumBoldSystemFont" text="Verify Your Email" translation="[0, 96]" />
+			<Label id="message" text="We sent a verification link to your inbox." color="#AAAAAA" translation="[0, 176]" />
+			<ButtonGroup id="buttonGroup" translation="[0, 300]" />
+		</Group>
+	</children>
+</component>

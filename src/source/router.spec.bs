@@ -449,6 +449,457 @@ namespace tests
         end function
 
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("popTo")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        @async()
+        @it("rejects when path is not in history stack")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("popTo with unknown path should have rejected")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("rejects when navigation is already in progress")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' Start a navigation (sets navigationInProgress = true)
+                sgRouter.navigateTo("/alpha", { router: m.router })
+                ' popTo should be blocked
+                return sgRouter.popTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("popTo while navigation in progress should have rejected")
+            end function).catch(function(error, m)
+                m.assertEqual(error.message, "Navigation already in progress")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("closes views above target and makes target active")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 3)
+                return sgRouter.popTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                ' Only /alpha should remain
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("dispatches NavigationStart and NavigationEnd")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.popTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                history = getGlobalAA().routerStatesHistory
+                m.assertEqual(history[0], "NavigationStart")
+                m.assertEqual(history[history.count() - 1], "NavigationEnd")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("matches the last occurrence of the path in the stack")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", allowReuse: false }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            ' Navigate: /alpha → /beta → /alpha → /gamma
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                ' popTo /alpha should go to the second /alpha (index 2), closing /gamma
+                return sgRouter.popTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+                ' /alpha (idx 2) + /beta (idx 1) + /alpha (idx 0) remain in viewTarget
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 3)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("ignores hash when matching path in stack")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' Pass hash in popTo — should still match /alpha in the stack
+                return sgRouter.popTo("/alpha#section1", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("restores a keepAlive view from keepAliveViewTarget")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha is now in keepAliveViewTarget
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha is restored to viewTarget; keepAliveViewTarget is empty
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 0)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("destroys keepAlive views above target")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                ' /beta is in keepAliveViewTarget
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                return sgRouter.popTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                ' /beta should be destroyed (not preserved), /gamma destroyed too
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 0)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("supports named route navigation")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/movies/:id", component: "View", name: "movieDetail" }
+                { pattern: "/signin", component: "View" }
+                { pattern: "/profiles", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/movies/123", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/signin", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/profiles", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popTo({ name: "movieDetail", params: { id: 123 } }, { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/movies/123")
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("rejects for unknown named route with no navigation events")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.popTo({ name: "doesNotExist" }, { router: m.router })
+            end function).then(function(_, m)
+                m.fail("Should have rejected")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+                m.assertEqual(getGlobalAA().routerStatesHistory, [])
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("rejects when target is the current view")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' /beta is current; search from count()-2=0 finds /alpha only, not /beta
+                return sgRouter.popTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("popTo on the current view should have rejected")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("matches path with query params when stack entry includes query params")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha?foo=bar", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popTo("/alpha?foo=bar", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/alpha?foo=bar")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("rejects when query params do not match stack entry")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha?foo=bar", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' Stack has "/alpha?foo=bar"; exact match fails for bare "/alpha"
+                return sgRouter.popTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("popTo with mismatched query params should have rejected")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("rejects when named route resolves to a path not in history")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/movies/:id", component: "View", name: "movieDetail" }
+                { pattern: "/signin", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/movies/123", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/signin", { router: m.router })
+            end function).then(function(_, m)
+                ' resolves to /movies/999, but only /movies/123 is in history
+                return sgRouter.popTo({ name: "movieDetail", params: { id: 999 } }, { router: m.router })
+            end function).then(function(_, m)
+                m.fail("Should have rejected when resolved path is not in history")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("rejects when named route is missing required param, with no navigation events")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+            m.router@._addRoutes([
+                { pattern: "/movies/:id", component: "View", name: "movieDetail" }
+                { pattern: "/signin", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/movies/123", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/signin", { router: m.router })
+            end function).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.popTo({ name: "movieDetail" }, { router: m.router })
+            end function).then(function(_, m)
+                m.fail("Should have rejected for missing required param")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+                m.assertEqual(getGlobalAA().routerStatesHistory, [])
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("supports named route with no dynamic segments")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/home", component: "View", name: "home" }
+                { pattern: "/settings", component: "View" }
+                { pattern: "/profile", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/home", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/settings", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/profile", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popTo({ name: "home" }, { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/home")
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("truncates history stack so subsequent goBack returns false")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                ' Stack is now just [/alpha]; goBack has nothing to go back to
+                result = sgRouter.goBack({ router: m.router })
+                m.assertFalse(result)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("allows subsequent navigation after completing")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/gamma")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("destroys multiple keepAlive views above target")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/gamma", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/delta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/delta", { router: m.router })
+            end function).then(function(_, m)
+                ' /beta and /gamma are suspended in keepAliveViewTarget
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 2)
+                return sgRouter.popTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 0)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("getActiveRoute")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @it("returns Invalid when no navigation has occurred yet")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" },
+            ])
+
+            result = sgRouter.getActiveRoute({ router: m.router })
+            m.assertInvalid(result)
+        end function
+
+        @async()
+        @it("returns the active route after navigation")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" },
+                { pattern: "/beta", component: "View" },
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_result, m)
+                activeRoute = sgRouter.getActiveRoute({ router: m.router })
+                m.assertNotInvalid(activeRoute)
+                m.assertEqual(activeRoute.path, "/alpha")
+            end function).toPromise()
+        end function
+
+        @it("returns Invalid when no router is found in the chain")
+        function _() 'bs:disable-line 1026 LINT1026
+            result = sgRouter.getActiveRoute({ router: Invalid })
+            m.assertInvalid(result)
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("getRoutes")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @it("getRoutes")
