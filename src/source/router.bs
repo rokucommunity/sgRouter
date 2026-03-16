@@ -61,16 +61,32 @@ namespace sgRouter
         return false
     end function
 
-    ' Unwind the history stack to the last occurrence of the given path, closing all views above it.
-    ' @since 0.1.3
-    ' @param path - Either a literal path string (e.g. "/home") or an AA for named-route navigation.
+    ' Marks the current active route as a checkpoint, optionally with a string identifier.
+    ' If identifier is Invalid or omitted, uses the active route's path as the identifier.
+    ' A single route may register multiple identifiers; duplicates are ignored.
+    ' @since 0.2.0
+    ' @param identifier - A string identifier for the checkpoint, or Invalid to use the active route's path
     ' @param options - The options to pass to the router
     ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
-    ' @return - A promise that resolves when navigation completes, or rejects if the path is not in the stack
-    function popTo(path = "" as Dynamic, options = {} as Object) as Dynamic
+    sub setCheckPoint(identifier = Invalid as Dynamic, options = {} as Object)
         r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
-            return r@._popTo(path)
+            r@._setCheckPoint(identifier)
+        end if
+    end sub
+
+    ' Unwinds the history stack to the most recent checkpointed route.
+    ' If identifier is provided, pops to the most recent route with that checkpoint identifier.
+    ' If identifier is omitted, pops to the most recent route with any checkpoint.
+    ' @since 0.2.0
+    ' @param identifier - The checkpoint identifier to search for, or Invalid to find any checkpoint
+    ' @param options - The options to pass to the router
+    ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
+    ' @return - A promise that resolves when navigation completes, or rejects if no matching checkpoint is found
+    function popToCheckPoint(identifier = Invalid as Dynamic, options = {} as Object) as Dynamic
+        r = options.router <> Invalid ? options.router : sgRouter.getRouter()
+        if rodash.isNotInvalid(r) then
+            return r@._popToCheckPoint(identifier)
         end if
         return promises.reject({ message: "No router found" })
     end function
