@@ -252,11 +252,7 @@ function _popTo(path = "" as Dynamic) as Dynamic
     })
 
     ' Truncate history stack to just up to and including the target
-    newStack = []
-    for i = 0 to targetIndex
-        newStack.push(m.__router_historyStack[i])
-    end for
-    m.__router_historyStack = newStack
+    m.__router_historyStack = rodash.slice(m.__router_historyStack, 0, targetIndex + 1)
 
     ' Close all views above the target — always destroy, never suspend (even keepAlive)
     closePromises = []
@@ -433,7 +429,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
                         for each view in rodash.getNodeChildren(m.__router_viewTarget)
                             viewsToRemoveOnResolve.push(view)
                         end for
-                    else if internalContext.replace AND m.__router_activeView <> Invalid then
+                    else if internalContext.replace then
                         ' Replace semantics: close the current view entirely (not just hide it),
                         ' regardless of keepAlive. Use forceCloseViews so keepAlive is bypassed.
                         ' clearStackOnResolve already includes it, so only add when that's false.
@@ -666,36 +662,39 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object, forceCloseV
         m.__router_viewTarget.appendChild(view)
         view.reparent(m.__router_viewTarget, true)
 
-        ' Determine whether the active view is in the closeViews or forceCloseViews list.
-        isActiveInCloseViews = false
-        isActiveInForceCloseViews = false
+        ' Determine whether the active view is scheduled to be closed or force-closed.
+        isActiveScheduledForClose = false
         if m.__router_activeView <> Invalid then
-            for each cv in internalContext.closeViews
-                if cv.id = m.__router_activeView.id then
-                    isActiveInCloseViews = true
-                    exit for
-                end if
-            end for
-            for each cv in internalContext.forceCloseViews
-                if cv.id = m.__router_activeView.id then
-                    isActiveInForceCloseViews = true
-                    exit for
-                end if
-            end for
+            if rodash.isNonEmptyArray(internalContext.closeViews) then
+                for each cv in internalContext.closeViews
+                    if cv.id = m.__router_activeView.id then
+                        isActiveScheduledForClose = true
+                        exit for
+                    end if
+                end for
+            end if
+            if NOT isActiveScheduledForClose AND rodash.isNonEmptyArray(internalContext.forceCloseViews) then
+                for each cv in internalContext.forceCloseViews
+                    if cv.id = m.__router_activeView.id then
+                        isActiveScheduledForClose = true
+                        exit for
+                    end if
+                end for
+            end if
         end if
 
         ' Build lifecycle promises to resolve before showing the new view.
         promisesToResolve = []
 
         ' Handle the active view:
-        ' - keepAlive AND not in closeViews/forceCloseViews: suspend and move to keepAliveViewTarget (awaited)
-        ' - in closeViews or forceCloseViews: just hide; lifecycle is handled by the close loops below
+        ' - keepAlive AND not scheduled for close: suspend and move to keepAliveViewTarget (awaited)
+        ' - scheduled for close: just hide; lifecycle is handled by the close loops below
         ' - otherwise: hide and fire onViewSuspend
         if m.__router_activeView <> Invalid then
-            if NOT isActiveInCloseViews AND NOT isActiveInForceCloseViews AND rodash.getBoolean(m.__router_activeView.route.routeConfig.keepAlive, "enabled") then
+            if NOT isActiveScheduledForClose AND rodash.getBoolean(m.__router_activeView.route.routeConfig.keepAlive, "enabled") then
                 promisesToResolve.push(suspendView(m.__router_activeView))
             else
-                hideView(m.__router_activeView, NOT isActiveInCloseViews AND NOT isActiveInForceCloseViews)
+                hideView(m.__router_activeView, NOT isActiveScheduledForClose)
             end if
         end if
 
