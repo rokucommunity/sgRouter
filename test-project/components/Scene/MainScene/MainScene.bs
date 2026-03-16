@@ -54,8 +54,10 @@ sub init()
                 },
                 denyRedirect: "/"
         }] },
-        { pattern: "/details/:type/:id", component: "DetailsScreen", name: "DetailsView", keepAlive: { enabled: true }, canActivate: [m.global.AuthManager], canDeactivate: [m.global.CanDeactivateManager] },
-        { pattern: "/details/:type/:id/cast", component: "CastDetailsScreen", canActivate: [m.global.AuthManager], canDeactivate: [m.global.CanDeactivateManager] },
+        { pattern: "/signup", component: "SignupScreen", canDeactivate: [m.global.CanDeactivateManager] },
+        { pattern: "/signup/verify", component: "VerifyEmailScreen", canDeactivate: [m.global.CanDeactivateManager] },
+        { pattern: "/details/:type/:id", component: "DetailsScreen", name: "DetailsView", keepAlive: { enabled: true }, canActivate: [m.global.AuthManager, "SignupGuard"], canDeactivate: [m.global.CanDeactivateManager] },
+        { pattern: "/details/:type/:id/cast", component: "CastDetailsScreen", canActivate: [m.global.AuthManager, "SignupGuard"], canDeactivate: [m.global.CanDeactivateManager] },
         { pattern: "/:screenName", component: "DefaultScreen", canDeactivate: [m.global.CanDeactivateManager] }
     ])
 

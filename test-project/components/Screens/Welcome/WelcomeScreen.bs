@@ -1,7 +1,7 @@
 sub init()
     m.label = m.top.findNode("label")
     m.buttonGroup = m.top.findNode("buttonGroup")
-    m.buttonGroup.buttons = ["Login", "Shows (Protected)", "Movies (Protected)"]
+    m.buttonGroup.buttons = ["Login", "Shows", "Movies"]
     m.buttonGroup.observeField("buttonSelected", "onButtonPress")
 end sub
 

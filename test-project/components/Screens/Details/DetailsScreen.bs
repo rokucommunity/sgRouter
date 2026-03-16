@@ -69,6 +69,16 @@ function beforeViewOpen(params = Invalid as Dynamic) as Dynamic
     return promises.resolve(Invalid)
 end function
 
+function onViewSuspend(params = {} as Object) as Dynamic
+    print "VIEW SUSPENDED", params
+    return promises.resolve(Invalid)
+end function
+
+function onViewResume(params = {} as Object) as Dynamic
+    print "VIEW RESUMED", params
+    return promises.resolve(Invalid)
+end function
+
 function handleFocus(data as Object) as Boolean
     if data.routerFocused then
         return m.rowList.setFocus(true)

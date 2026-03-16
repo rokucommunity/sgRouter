@@ -10,8 +10,8 @@
 
 <p align="center">
   <a href="https://github.com/rokucommunity/sgRouter/actions?query=branch%3Amaster+workflow%3Abuild"><img src="https://img.shields.io/github/actions/workflow/status/rokucommunity/sgRouter/build.yml?logo=github&branch=master" alt="Build Status"/></a>
-  <a href="https://npmcharts.com/compare/sgrouter?minimal=true"><img src="https://img.shields.io/npm/dm/sgrouter.svg?logo=npm" alt="Downloads"/></a>
-  <a href="https://www.npmjs.com/package/sgrouter"><img src="https://img.shields.io/npm/v/sgrouter.svg?logo=npm" alt="Version"/></a>
+  <a href="https://npmcharts.com/compare/@rokucommunity/sgrouter?minimal=true"><img src="https://img.shields.io/npm/dm/@rokucommunity/sgrouter.svg?logo=npm" alt="Downloads"/></a>
+  <a href="https://www.npmjs.com/package/@rokucommunity/sgrouter"><img src="https://img.shields.io/npm/v/@rokucommunity/sgrouter.svg?logo=npm" alt="Version"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/rokucommunity/sgRouter.svg" alt="License"/></a>
   <a href="https://join.slack.com/t/rokudevelopers/shared_invite/zt-4vw7rg6v-NH46oY7hTktpRIBM_zGvwA"><img src="https://img.shields.io/badge/Slack-RokuCommunity-4A154B?logo=slack" alt="Slack Community"/></a>
 </p>
@@ -25,7 +25,7 @@
 - **Named routes** — navigate by intent, not by hardcoded path strings
 - **Route guards** (`canActivate`) for protected screens
 - **View lifecycle hooks** for fine-grained control
-- **Stack management** (navigation, suspension, resume)
+- **Stack management** (navigation, suspension, resume, and `popTo` unwinding)
 - **Observable router state** for debugging or analytics
 
 ---
@@ -367,13 +367,13 @@ Duplicate names at registration time log a warning and the first registration wi
 
 ---
 
-## 🧭 Route Snapshot in lifecycle hooks `beforeViewOpen`, `onViewOpen`, `onRouteUpdate`
+## 🧭 Route Snapshot in lifecycle hooks
 
 Every view lifecycle receives a **route snapshot** so your screen logic can react to the URL that triggered navigation.
 
 ### What you get in `params`
 
-`params` is constructed by the router just before the lifecycle is called, and includes:
+`beforeViewOpen`, `onViewOpen`, `beforeViewClose`, `onViewSuspend`, and `onViewResume` all receive a `params` object constructed by the router just before the lifecycle is called, which includes:
 
 ```text
 params.route.routeConfig          ' the matched route definition
@@ -387,7 +387,9 @@ params.route.navigationState      ' how this navigation was triggered:
   .fromRedirect                   '   true when arrived via a canActivate guard redirect
 ```
 
-The snapshot is sourced from the URL you navigated to (e.g. `"/details/movies/42?page=2&sort=trending#grid=poster"`). The router builds this object and passes it into `beforeViewOpen(params)`, `onViewOpen(params)`, and `onRouteUpdate(params)`.
+The snapshot is sourced from the URL you navigated to (e.g. `"/details/movies/42?page=2&sort=trending#grid=poster"`). The router builds this object and passes it into `beforeViewOpen(params)`, `onViewOpen(params)`, `beforeViewClose(params)`, `onViewSuspend(params)`, and `onViewResume(params)`.
+
+`onRouteUpdate` is different — it receives an object with both the old and new route (`params.oldRoute` and `params.newRoute`), so you can diff the two and respond to exactly what changed.
 
 ### Example: Using it in a Catalog view
 
@@ -434,6 +436,91 @@ The route snapshot is assembled by the router by parsing:
 - the **hash** → `hash`
 
 That structured object is then provided to the view lifecycles mentioned above. This keeps your screens URL-driven and easy to test (you can navigate with different URLs and assert behavior based on `params`).
+
+---
+
+## ⏪ popTo — Unwind to a Previous Route
+
+`popTo` unwinds the navigation stack to the last occurrence of a previously-visited route, closing every view above it. It is useful for multi-step flows (e.g. checkout, onboarding, sign-in) where you want to jump back to a known entry point without calling `goBack` repeatedly.
+
+### Basic usage
+
+```brightscript
+' Unwind to /home, closing all views above it
+sgRouter.popTo("/home")
+```
+
+`popTo` returns a promise that resolves when the target view is active, or rejects on error. Any hash fragment in the path is stripped automatically — it never affects matching.
+
+```brightscript
+' Hash is ignored for matching; both lines resolve to the same stack entry
+sgRouter.popTo("/home")
+sgRouter.popTo("/home#section1")
+```
+
+### Query parameters are part of the match
+
+History stack entries include query parameters. If you navigated to `/search?q=roku`, you must include the exact query string to match it:
+
+```brightscript
+sgRouter.navigateTo("/search?q=roku")
+' ...later...
+sgRouter.popTo("/search?q=roku")   ' matches
+sgRouter.popTo("/search")          ' does NOT match — rejects
+```
+
+### Named route usage
+
+`popTo` accepts the same named-route AA as `navigateTo`:
+
+```brightscript
+sgRouter.popTo({ name: "movieDetail", params: { id: 42 } })
+' Resolves to /movies/42, then matches against the stack
+```
+
+Static named routes require no params:
+
+```brightscript
+sgRouter.popTo({ name: "home" })
+```
+
+### Stack behaviour
+
+- **Matching** — searches backwards from the entry below the current view for the last occurrence of the path. If a path appears multiple times, the most recent (deepest) prior visit is the target.
+- **Views above the target** — all closed and destroyed, including any `keepAlive` views that were suspended. No views above the target are preserved.
+- **The target view** — if it was suspended in `keepAliveViewTarget` it is restored to `viewTarget`; `onViewResume` fires as normal.
+- **History stack** — truncated to `[0..targetIndex]` before close promises settle. A `goBack` immediately after `popTo` sees only the entries up to and including the target.
+
+```brightscript
+' Stack: /home → /catalog → /details/42 → /checkout
+sgRouter.popTo("/catalog")
+' Stack after: /home → /catalog
+' /details/42 and /checkout are destroyed; /catalog is the active view
+```
+
+### Error cases
+
+`popTo` rejects (returns a rejected promise) in the following situations:
+
+| Situation | Rejection message |
+|---|---|
+| Path not found in the history stack | `"popTo: path not found in history stack: <path>"` |
+| Target is the current (top) view | `"popTo: path not found in history stack: <path>"` |
+| Another navigation is already in progress | `"Navigation already in progress"` |
+| Named route name does not exist | `"no route found with name \"<name>\""` |
+| Named route is missing a required param | `"missing required param for named route \"<name>\""` |
+| Empty/invalid path | `"Invalid path"` |
+
+```brightscript
+promises.chain(sgRouter.popTo("/checkout"), m)
+    .then(function(_, m)
+        ' successfully popped
+    end function)
+    .catch(function(error, m)
+        print "popTo failed: " + error.message
+    end function)
+    .toPromise()
+```
 
 ---
 ## 💬 Community & Support
