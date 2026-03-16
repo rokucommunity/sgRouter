@@ -979,7 +979,7 @@ namespace tests
         end function
 
         @async()
-        @it("destroys a keepAlive replaced view instead of suspending it")
+        @it("suspends a keepAlive replaced view into keepAliveViewTarget")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
             m.router@._addRoutes([
@@ -989,9 +989,9 @@ namespace tests
             return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
                 return sgRouter.navigateTo("/beta", { router: m.router, replace: true })
             end function).then(function(_, m)
-                ' /alpha has keepAlive but was replaced: it must be destroyed, not parked in keepAliveViewTarget.
-                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 0)
-                ' Only /beta remains in viewTarget.
+                ' /alpha has keepAlive and was replaced: it should be suspended, not destroyed.
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                ' Only /beta is visible in viewTarget.
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
                 m.assertEqual(m.router.routerState.url, "/beta")
                 ' Stack has a single entry — goBack is not possible.

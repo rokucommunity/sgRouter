@@ -460,10 +460,10 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
                             viewsToRemoveOnResolve.push(view)
                         end for
                     else if internalContext.replace then
-                        ' Replace semantics: close the current view entirely (not just hide it),
-                        ' regardless of keepAlive. Use forceCloseViews so keepAlive is bypassed.
+                        ' Replace semantics: remove the current view from the stack.
+                        ' Respect keepAlive — keepAlive views are suspended, non-keepAlive views are destroyed.
                         ' clearStackOnResolve already includes it, so only add when that's false.
-                        forceCloseViews.push(m.__router_activeView)
+                        viewsToRemoveOnResolve.push(m.__router_activeView)
                     end if
                 end if
             end if
