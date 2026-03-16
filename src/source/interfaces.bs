@@ -27,6 +27,7 @@ namespace sgRouter
     interface NavigationState
         fromPushState as Boolean ' normal forward navigation
         fromPopState as Boolean ' back navigation (_goBack)
+        fromReplaceState as Boolean ' forward navigation with replace: true (replaces current history entry)
         fromKeepAlive as Boolean ' resumed from keepAliveViewTarget cache
         fromRedirect as Boolean ' arrived via a canActivate guard redirect
     end interface
