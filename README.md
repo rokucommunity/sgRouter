@@ -25,7 +25,7 @@
 - **Named routes** — navigate by intent, not by hardcoded path strings
 - **Route guards** (`canActivate`) for protected screens
 - **View lifecycle hooks** for fine-grained control
-- **Stack management** (navigation, suspension, resume, and `popTo` unwinding)
+- **Stack management** (navigation, suspension, resume, and checkpoint-based unwinding)
 - **Observable router state** for debugging or analytics
 
 ---
@@ -439,85 +439,95 @@ That structured object is then provided to the view lifecycles mentioned above. 
 
 ---
 
-## ⏪ popTo — Unwind to a Previous Route
+## ⏪ Checkpoints — Unwind the Stack to a Known Point
 
-`popTo` unwinds the navigation stack to the last occurrence of a previously-visited route, closing every view above it. It is useful for multi-step flows (e.g. checkout, onboarding, sign-in) where you want to jump back to a known entry point without calling `goBack` repeatedly.
+Checkpoints let you mark a stack entry as a named "save point" and later unwind back to it in one call. This is useful for multi-step flows (e.g. checkout, onboarding, sign-in) where you want to jump back to a known entry point without calling `goBack` repeatedly.
 
-### Basic usage
+### 1) Mark a checkpoint
+
+Call `setCheckPoint` at any time to stamp the currently active stack entry:
 
 ```brightscript
-' Unwind to /home, closing all views above it
-sgRouter.popTo("/home")
+' Mark the current view with a named identifier
+sgRouter.setCheckPoint("checkout-start")
 ```
 
-`popTo` returns a promise that resolves when the target view is active, or rejects on error. Any hash fragment in the path is stripped automatically — it never affects matching.
+- `identifier` is a string. If omitted (or `Invalid`), the current route's path is used as the identifier.
+- A single stack entry can hold multiple identifiers — calling `setCheckPoint` again with a different name on the same view just adds another identifier (idempotent).
+- No-op when the stack is empty.
 
 ```brightscript
-' Hash is ignored for matching; both lines resolve to the same stack entry
-sgRouter.popTo("/home")
-sgRouter.popTo("/home#section1")
+' Omit the identifier — uses the active route path automatically
+sgRouter.setCheckPoint()
 ```
 
-### Query parameters are part of the match
+### 2) Unwind to a checkpoint
 
-History stack entries include query parameters. If you navigated to `/search?q=roku`, you must include the exact query string to match it:
+Call `popToCheckPoint` to close every view above the most recent matching checkpoint and restore that view as active:
 
 ```brightscript
-sgRouter.navigateTo("/search?q=roku")
-' ...later...
-sgRouter.popTo("/search?q=roku")   ' matches
-sgRouter.popTo("/search")          ' does NOT match — rejects
+sgRouter.popToCheckPoint("checkout-start")
 ```
 
-### Named route usage
-
-`popTo` accepts the same named-route AA as `navigateTo`:
+- Searches **backwards** from the entry below the current view.
+- If `identifier` is omitted (or `Invalid`), finds the most recent entry that has **any** checkpoint.
+- Returns a promise that resolves when the target view is active.
 
 ```brightscript
-sgRouter.popTo({ name: "movieDetail", params: { id: 42 } })
-' Resolves to /movies/42, then matches against the stack
+' Pop to the most recent checkpoint regardless of identifier
+sgRouter.popToCheckPoint()
 ```
 
-Static named routes require no params:
+### Example: Multi-step checkout flow
 
 ```brightscript
-sgRouter.popTo({ name: "home" })
+' --- CatalogScreen.bs ---
+function onViewOpen(params as object) as dynamic
+    ' Mark this view as the start of the checkout flow
+    sgRouter.setCheckPoint("shop")
+    return promises.resolve(invalid)
+end function
+
+' --- CheckoutConfirmScreen.bs ---
+function onCancelPressed() as void
+    ' Jump all the way back to the catalog in one call
+    promises.chain(sgRouter.popToCheckPoint("shop"), m)
+        .catch(function(error, m)
+            print "popToCheckPoint failed: " + error.message
+        end function)
+        .toPromise()
+end function
 ```
 
 ### Stack behaviour
 
-- **Matching** — searches backwards from the entry below the current view for the last occurrence of the path. If a path appears multiple times, the most recent (deepest) prior visit is the target.
 - **Views above the target** — all closed and destroyed, including any `keepAlive` views that were suspended. No views above the target are preserved.
 - **The target view** — if it was suspended in `keepAliveViewTarget` it is restored to `viewTarget`; `onViewResume` fires as normal.
-- **History stack** — truncated to `[0..targetIndex]` before close promises settle. A `goBack` immediately after `popTo` sees only the entries up to and including the target.
+- **History stack** — truncated to `[0..targetIndex]`. A `goBack` immediately after `popToCheckPoint` sees only the entries up to and including the target.
 
 ```brightscript
-' Stack: /home → /catalog → /details/42 → /checkout
-sgRouter.popTo("/catalog")
-' Stack after: /home → /catalog
-' /details/42 and /checkout are destroyed; /catalog is the active view
+' Stack: /home [checkpoint="shop"] → /details/42 → /cart → /checkout
+sgRouter.popToCheckPoint("shop")
+' Stack after: /home
+' /details/42, /cart, and /checkout are destroyed; /home is the active view
 ```
 
 ### Error cases
 
-`popTo` rejects (returns a rejected promise) in the following situations:
+`popToCheckPoint` rejects (returns a rejected promise) in the following situations:
 
 | Situation | Rejection message |
 |---|---|
-| Path not found in the history stack | `"popTo: path not found in history stack: <path>"` |
-| Target is the current (top) view | `"popTo: path not found in history stack: <path>"` |
+| No matching checkpoint found in the history stack | `"popToCheckPoint: no checkpoint found"` |
 | Another navigation is already in progress | `"Navigation already in progress"` |
-| Named route name does not exist | `"no route found with name \"<name>\""` |
-| Named route is missing a required param | `"missing required param for named route \"<name>\""` |
-| Empty/invalid path | `"Invalid path"` |
 
 ```brightscript
-promises.chain(sgRouter.popTo("/checkout"), m)
+promises.chain(sgRouter.popToCheckPoint("checkout-start"), m)
     .then(function(_, m)
-        ' successfully popped
+        ' successfully popped to checkpoint
     end function)
     .catch(function(error, m)
-        print "popTo failed: " + error.message
+        print "popToCheckPoint failed: " + error.message
     end function)
     .toPromise()
 ```
