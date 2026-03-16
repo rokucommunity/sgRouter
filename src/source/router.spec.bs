@@ -962,6 +962,29 @@ namespace tests
             end function).toPromise()
         end function
 
+        @async()
+        @it("clearStackOnResolve wins over replace: history is fully cleared, not just last entry replaced")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/root", component: "View", clearStackOnResolve: true }
+            ])
+            ' Build up a two-entry stack, then replace-navigate to a clearStackOnResolve route.
+            ' Expected: only /root in viewTarget and only one history entry — goBack returns false.
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/root", { router: m.router, replace: true })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/root")
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                result = sgRouter.goBack({ router: m.router })
+                m.assertFalse(result)
+            end function).toPromise()
+        end function
+
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("getActiveRoute")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

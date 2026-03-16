@@ -854,11 +854,17 @@ function showView(view as Object, onResume = false as Boolean) as Dynamic
                 if context.view.route.navigationState.fromPopState then
                     m.__router_historyStack.pop()
                 else if context.view.route.navigationState.fromReplaceState then
-                    lastIndex = m.__router_historyStack.count() - 1
-                    if lastIndex >= 0 then
-                        m.__router_historyStack[lastIndex] = { path: context.view.route.path, nodeId: context.view.id }
-                    else
+                    if context.view.route.routeConfig.clearStackOnResolve then
+                        ' clearStackOnResolve wins: wipe history, then add the single new entry.
+                        m.__router_historyStack = []
                         m.__router_historyStack.push({ path: context.view.route.path, nodeId: context.view.id })
+                    else
+                        lastIndex = m.__router_historyStack.count() - 1
+                        if lastIndex >= 0 then
+                            m.__router_historyStack[lastIndex] = { path: context.view.route.path, nodeId: context.view.id }
+                        else
+                            m.__router_historyStack.push({ path: context.view.route.path, nodeId: context.view.id })
+                        end if
                     end if
                 else
                     if context.view.route.routeConfig.clearStackOnResolve then
