@@ -401,7 +401,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
     })
 
     'sleep until next tick, then continue work
-    return promises.chain(promises.resolve(Invalid), { newRoute: newRoute, replace: replace  }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
+    return promises.chain(promises.resolve(Invalid), { newRoute: newRoute, replace: replace }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
         currentRoute = m.__router_activeView <> Invalid ? m.__router_activeView.route : Invalid
         return runGuardChecks(internalContext.newRoute, currentRoute)
     end function).then(function(guardCheckResponse as Dynamic, internalContext as Dynamic) as Dynamic
@@ -666,7 +666,10 @@ function runDeactivateGuardsSync(currentRoute as Dynamic, targetRoute as Dynamic
 
     for each guard in canDeactivateGuards
         guardNode = Invalid
-        if rodash.isNode(guard) then
+        if rodash.isAA(guard) then
+            guardNode = rodash.createNode("KeyPathGuard")
+            guardNode@.setGuardConfig(guard)
+        else if rodash.isNode(guard) then
             guardNode = guard
         else if rodash.isString(guard) then
             if m.__router_guardInstances[guard] = Invalid then
@@ -1171,7 +1174,7 @@ sub dispatchRouterState(stateType as String, context = {} as Dynamic)
     if rodash.isNode(context.route) then
         r = context.route
         update.state = createRouteSnapshot(r)
-        if stateType = RouterState.NavigationCancel and rodash.isNode(context.sourceRoute) then
+        if stateType = RouterState.NavigationCancel AND rodash.isNode(context.sourceRoute) then
             update.url = context.sourceRoute.path
         else
             update.url = r.path
