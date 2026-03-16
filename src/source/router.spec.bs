@@ -903,6 +903,28 @@ namespace tests
         end function
 
         @async()
+        @it("destroys a keepAlive replaced view instead of suspending it")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router, replace: true })
+            end function).then(function(_, m)
+                ' /alpha has keepAlive but was replaced: it must be destroyed, not parked in keepAliveViewTarget.
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 0)
+                ' Only /beta remains in viewTarget.
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router.routerState.url, "/beta")
+                ' Stack has a single entry — goBack is not possible.
+                result = sgRouter.goBack({ router: m.router })
+                m.assertFalse(result)
+            end function).toPromise()
+        end function
+
+        @async()
         @it("replace mid-stack preserves entries below the replaced view")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
