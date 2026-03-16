@@ -905,6 +905,7 @@ sub _applyPopNavigationState(view as Object, fromKeepAlive = false as Boolean)
         fromKeepAlive: fromKeepAlive
         fromPopState: true
         fromPushState: false
+        fromReplaceState: false
         fromRedirect: false
     })
 end sub
