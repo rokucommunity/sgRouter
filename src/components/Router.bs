@@ -158,8 +158,9 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
         if NOT deactivateResult.allow then
             m.__router_processingGoBack = false
             dispatchRouterState(RouterState.NavigationCancel, {
-                id: m.__router_activeView.route.id
-                route: m.__router_activeView.route
+                id: viewToOpen.route.id
+                route: viewToOpen.route
+                sourceRoute: m.__router_activeView.route
             })
             return false
         end if
@@ -554,8 +555,9 @@ function runGuardChecks(route as Dynamic, currentRoute = Invalid as Dynamic) as 
                     route: route
                 })
                 dispatchRouterState(RouterState.NavigationCancel, {
-                    id: currentRoute.id
-                    route: currentRoute
+                    id: route.id
+                    route: route
+                    sourceRoute: currentRoute
                 })
                 return promises.resolve({ allow: false, message: `Route "${route.path}" blocked by canDeactivate guard` })
             end if
@@ -569,11 +571,14 @@ function runGuardChecks(route as Dynamic, currentRoute = Invalid as Dynamic) as 
             route: route
         })
         ' An event triggered when a navigation is canceled, directly or indirectly. This can happen for several reasons including when a route guard returns false or initiates a redirect.
-        cancelRoute = currentRoute <> Invalid ? currentRoute : route
-        dispatchRouterState(RouterState.NavigationCancel, {
-            id: cancelRoute.id
-            route: cancelRoute
-        })
+        cancelContext = {
+            id: route.id
+            route: route
+        }
+        if currentRoute <> Invalid then
+            cancelContext.sourceRoute = currentRoute
+        end if
+        dispatchRouterState(RouterState.NavigationCancel, cancelContext)
         if activateResult.redirectTo <> Invalid then
             return promises.resolve({ allow: false, redirect: _navigateTo(activateResult.redirectTo, activateResult.redirectOptions) })
         end if
@@ -1166,7 +1171,11 @@ sub dispatchRouterState(stateType as String, context = {} as Dynamic)
     if rodash.isNode(context.route) then
         r = context.route
         update.state = createRouteSnapshot(r)
-        update.url = r.path
+        if stateType = RouterState.NavigationCancel and rodash.isNode(context.sourceRoute) then
+            update.url = context.sourceRoute.path
+        else
+            update.url = r.path
+        end if
     end if
 
     m.top.routerState = update
