@@ -780,7 +780,7 @@ namespace tests
         end function
 
         @async()
-        @it("destroys keepAlive views above target")
+        @it("suspends keepAlive views above target")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
             m.router@._addRoutes([
@@ -798,15 +798,15 @@ namespace tests
                 m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
                 return sgRouter.popToCheckPoint("start", { router: m.router })
             end function).then(function(_, m)
-                ' /beta should be destroyed (not preserved), /gamma destroyed too
-                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 0)
+                ' /beta should remain suspended in keepAliveViewTarget, /gamma destroyed
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
                 m.assertEqual(m.router.routerState.url, "/alpha")
             end function).toPromise()
         end function
 
         @async()
-        @it("destroys multiple keepAlive views above target")
+        @it("suspends multiple keepAlive views above target")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
             m.router@._addRoutes([
@@ -827,7 +827,8 @@ namespace tests
                 m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 2)
                 return sgRouter.popToCheckPoint("start", { router: m.router })
             end function).then(function(_, m)
-                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 0)
+                ' /beta and /gamma remain suspended, /delta destroyed
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 2)
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
                 m.assertEqual(m.router.routerState.url, "/alpha")
             end function).toPromise()
