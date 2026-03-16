@@ -851,15 +851,15 @@ function showView(view as Object, onResume = false as Boolean) as Dynamic
             ' - fromPushState: push history (including keepAlive resumes)
             ' - processingPopTo: stack already managed by _popTo, skip all history updates
             if NOT m.__router_processingPopTo then
-                if context.view.route.navigationState.fromReplaceState then
+                if context.view.route.navigationState.fromPopState then
+                    m.__router_historyStack.pop()
+                else if context.view.route.navigationState.fromReplaceState then
                     lastIndex = m.__router_historyStack.count() - 1
                     if lastIndex >= 0 then
                         m.__router_historyStack[lastIndex] = { path: context.view.route.path, nodeId: context.view.id }
                     else
                         m.__router_historyStack.push({ path: context.view.route.path, nodeId: context.view.id })
                     end if
-                else if context.view.route.navigationState.fromPopState then
-                    m.__router_historyStack.pop()
                 else
                     if context.view.route.routeConfig.clearStackOnResolve then
                         m.__router_historyStack = []
