@@ -298,6 +298,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
     routeConfigOverrides = rodash.getAA(options, "routeConfigOverrides")
     navigationState = rodash.getAA(options, "navigationState")
     context = rodash.getAA(options, "context")
+    replace = rodash.getBoolean(options, "replace")
 
     newRoute = rodash.createNode("Node", findMatchingRoute(path, m.__router_routes))
 
@@ -358,7 +359,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
     })
 
     'sleep until next tick, then continue work
-    return promises.chain(promises.resolve(Invalid), { newRoute: newRoute }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
+    return promises.chain(promises.resolve(Invalid), { newRoute: newRoute, replace: replace }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
         return runGuardChecks(internalContext.newRoute)
     end function).then(function(guardCheckResponse as Dynamic, internalContext as Dynamic) as Dynamic
         if NOT guardCheckResponse.allow then
@@ -431,13 +432,18 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
                         for each view in rodash.getNodeChildren(m.__router_viewTarget)
                             viewsToRemoveOnResolve.push(view)
                         end for
+                    else if internalContext.replace AND m.__router_activeView <> Invalid then
+                        ' Replace semantics: close the current view entirely (not just hide it).
+                        ' clearStackOnResolve already includes it, so only add when that's false.
+                        viewsToRemoveOnResolve.push(m.__router_activeView)
                     end if
                 end if
             end if
 
             newRoute.navigationState = rodash.merge(newRoute.navigationState, {
                 fromPopState: false
-                fromPushState: true
+                fromPushState: NOT internalContext.replace
+                fromReplaceState: internalContext.replace
             })
 
             return addViewToStack(newRoute, viewsToRemoveOnResolve)
@@ -845,7 +851,14 @@ function showView(view as Object, onResume = false as Boolean) as Dynamic
             ' - fromPushState: push history (including keepAlive resumes)
             ' - processingPopTo: stack already managed by _popTo, skip all history updates
             if NOT m.__router_processingPopTo then
-                if context.view.route.navigationState.fromPopState then
+                if context.view.route.navigationState.fromReplaceState then
+                    lastIndex = m.__router_historyStack.count() - 1
+                    if lastIndex >= 0 then
+                        m.__router_historyStack[lastIndex] = { path: context.view.route.path, nodeId: context.view.id }
+                    else
+                        m.__router_historyStack.push({ path: context.view.route.path, nodeId: context.view.id })
+                    end if
+                else if context.view.route.navigationState.fromPopState then
                     m.__router_historyStack.pop()
                 else
                     if context.view.route.routeConfig.clearStackOnResolve then
@@ -1046,6 +1059,7 @@ function createBaseNavigationState() as Object
         fromKeepAlive: false
         fromPopState: false
         fromPushState: false
+        fromReplaceState: false
     }
 end function
 
