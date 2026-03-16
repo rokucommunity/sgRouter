@@ -607,18 +607,7 @@ function runActivateGuardsSync(route as Dynamic) as Object
     if NOT rodash.isNonEmptyArray(canActivateGuards) then return { allow: true }
 
     for each guard in canActivateGuards
-        guardNode = Invalid
-        if rodash.isAA(guard) then
-            guardNode = rodash.createNode("KeyPathGuard")
-            guardNode@.setGuardConfig(guard)
-        else if rodash.isNode(guard) then
-            guardNode = guard
-        else if rodash.isString(guard) then
-            if m.__router_guardInstances[guard] = Invalid then
-                m.__router_guardInstances[guard] = rodash.createNode(guard)
-            end if
-            guardNode = m.__router_guardInstances[guard]
-        end if
+        guardNode = resolveGuardNode(guard)
 
         if guardNode <> Invalid then
             canActivateResult = guardNode@.canActivate(route)
@@ -665,18 +654,7 @@ function runDeactivateGuardsSync(currentRoute as Dynamic, targetRoute as Dynamic
     }
 
     for each guard in canDeactivateGuards
-        guardNode = Invalid
-        if rodash.isAA(guard) then
-            guardNode = rodash.createNode("KeyPathGuard")
-            guardNode@.setGuardConfig(guard)
-        else if rodash.isNode(guard) then
-            guardNode = guard
-        else if rodash.isString(guard) then
-            if m.__router_guardInstances[guard] = Invalid then
-                m.__router_guardInstances[guard] = rodash.createNode(guard)
-            end if
-            guardNode = m.__router_guardInstances[guard]
-        end if
+        guardNode = resolveGuardNode(guard)
 
         if guardNode <> Invalid then
             result = guardNode@.canDeactivate(context)
@@ -695,6 +673,24 @@ function runDeactivateGuardsSync(currentRoute as Dynamic, targetRoute as Dynamic
     end for
 
     return { allow: true }
+end function
+
+' Resolves a guard config entry (AA, node, or string class name) to a guardNode.
+' String guards are cached in m.__router_guardInstances to avoid repeated node creation.
+function resolveGuardNode(guard as Dynamic) as Dynamic
+    if rodash.isAA(guard) then
+        guardNode = rodash.createNode("KeyPathGuard")
+        guardNode@.setGuardConfig(guard)
+        return guardNode
+    else if rodash.isNode(guard) then
+        return guard
+    else if rodash.isString(guard) then
+        if m.__router_guardInstances[guard] = Invalid then
+            m.__router_guardInstances[guard] = rodash.createNode(guard)
+        end if
+        return m.__router_guardInstances[guard]
+    end if
+    return Invalid
 end function
 
 '*************************************************************************
