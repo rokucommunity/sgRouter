@@ -273,16 +273,11 @@ function _popToCheckPoint(identifier = Invalid as Dynamic) as Dynamic
         nodeIdsToClose[m.__router_historyStack[i].nodeId] = true
     end for
 
-    ' Find all view nodes to close by exact node ID
-    viewsToClose = []
+    ' Find view nodes in viewTarget to close/suspend (keepAlive views already in keepAliveViewTarget are left as-is)
+    viewsToProcess = []
     for each v in rodash.getNodeChildren(m.__router_viewTarget)
         if nodeIdsToClose[v.id] = true then
-            viewsToClose.push(v)
-        end if
-    end for
-    for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
-        if nodeIdsToClose[v.id] = true then
-            viewsToClose.push(v)
+            viewsToProcess.push(v)
         end if
     end for
 
@@ -300,10 +295,10 @@ function _popToCheckPoint(identifier = Invalid as Dynamic) as Dynamic
     ' Truncate history stack to just up to and including the target
     m.__router_historyStack = rodash.slice(m.__router_historyStack, 0, targetIndex + 1)
 
-    ' Close all views above the target — always destroy, never suspend (even keepAlive)
+    ' Close or suspend views above the target — keepAlive views are suspended, others destroyed
     closePromises = []
-    for each cv in viewsToClose
-        closePromises.push(closeView(cv))
+    for each cv in viewsToProcess
+        closePromises.push(closeOrSuspendView(cv))
     end for
 
     m.__router_processingPopTo = true
