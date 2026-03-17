@@ -277,11 +277,7 @@ function _popToCheckPoint(identifier = Invalid as Dynamic) as Dynamic
     })
 
     ' Truncate history stack to just up to and including the target
-    newStack = []
-    for i = 0 to targetIndex
-        newStack.push(m.__router_historyStack[i])
-    end for
-    m.__router_historyStack = newStack
+    m.__router_historyStack = rodash.slice(m.__router_historyStack, 0, targetIndex + 1)
 
     ' Close or suspend views above the target — keepAlive views are suspended, others destroyed
     closePromises = []
@@ -323,6 +319,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
     routeConfigOverrides = rodash.getAA(options, "routeConfigOverrides")
     navigationState = rodash.getAA(options, "navigationState")
     context = rodash.getAA(options, "context")
+    replace = rodash.getBoolean(options, "replace")
 
     newRoute = rodash.createNode("Node", findMatchingRoute(path, m.__router_routes))
 
@@ -383,7 +380,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
     })
 
     'sleep until next tick, then continue work
-    return promises.chain(promises.resolve(Invalid), { newRoute: newRoute }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
+    return promises.chain(promises.resolve(Invalid), { newRoute: newRoute, replace: replace }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
         return runGuardChecks(internalContext.newRoute)
     end function).then(function(guardCheckResponse as Dynamic, internalContext as Dynamic) as Dynamic
         if NOT guardCheckResponse.allow then
@@ -409,6 +406,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
             end if
 
             viewsToRemoveOnResolve = []
+            forceCloseViews = []
             if m.__router_activeView <> Invalid then
                 oldRoute = m.__router_activeView.route
 
@@ -456,16 +454,22 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
                         for each view in rodash.getNodeChildren(m.__router_viewTarget)
                             viewsToRemoveOnResolve.push(view)
                         end for
+                    else if internalContext.replace then
+                        ' Replace semantics: remove the current view from the stack.
+                        ' Respect keepAlive — keepAlive views are suspended, non-keepAlive views are destroyed.
+                        ' clearStackOnResolve already includes it, so only add when that's false.
+                        viewsToRemoveOnResolve.push(m.__router_activeView)
                     end if
                 end if
             end if
 
             newRoute.navigationState = rodash.merge(newRoute.navigationState, {
                 fromPopState: false
-                fromPushState: true
+                fromPushState: NOT internalContext.replace
+                fromReplaceState: internalContext.replace
             })
 
-            return addViewToStack(newRoute, viewsToRemoveOnResolve)
+            return addViewToStack(newRoute, viewsToRemoveOnResolve, forceCloseViews)
         end if
 
         message = { message: `Route "${newRoute.path}" not found` }
@@ -619,7 +623,7 @@ end function
 ' @param {Dynamic} route - The route to add to the view stack
 ' @param {Array} closeViews - The views to close/suspend
 ' @returns {Dynamic} - The result of the view stack management
-function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
+function addViewToStack(route as Dynamic, closeViews = [] as Object, forceCloseViews = [] as Object) as Dynamic
     ' An event triggered at the start of the Resolve phase of routing.
     dispatchRouterState(RouterState.ResolveStart, {
         id: route.id
@@ -676,36 +680,46 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         toResolve = view@._beforeViewOpen({ route: route })
     end if
 
-    return promises.chain(toResolve, { view: view, closeViews: closeViews, fromKeepAlive: keepAliveView <> Invalid }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
+    return promises.chain(toResolve, { view: view, closeViews: closeViews, forceCloseViews: forceCloseViews, fromKeepAlive: keepAliveView <> Invalid }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
         view = internalContext.view
 
         ' Ensure the view is in the visible stack (and reparent if it was previously suspended)
         m.__router_viewTarget.appendChild(view)
         view.reparent(m.__router_viewTarget, true)
 
-        ' Determine whether the active view is in the closeViews list.
-        isActiveInCloseViews = false
+        ' Determine whether the active view is scheduled to be closed or force-closed.
+        isActiveScheduledForClose = false
         if m.__router_activeView <> Invalid then
-            for each cv in internalContext.closeViews
-                if cv.id = m.__router_activeView.id then
-                    isActiveInCloseViews = true
-                    exit for
-                end if
-            end for
+            if rodash.isNonEmptyArray(internalContext.closeViews) then
+                for each cv in internalContext.closeViews
+                    if cv.id = m.__router_activeView.id then
+                        isActiveScheduledForClose = true
+                        exit for
+                    end if
+                end for
+            end if
+            if NOT isActiveScheduledForClose AND rodash.isNonEmptyArray(internalContext.forceCloseViews) then
+                for each cv in internalContext.forceCloseViews
+                    if cv.id = m.__router_activeView.id then
+                        isActiveScheduledForClose = true
+                        exit for
+                    end if
+                end for
+            end if
         end if
 
         ' Build lifecycle promises to resolve before showing the new view.
         promisesToResolve = []
 
         ' Handle the active view:
-        ' - keepAlive AND not in closeViews: suspend and move to keepAliveViewTarget (awaited)
-        ' - in closeViews: just hide; lifecycle is handled by the closeViews loop below
+        ' - keepAlive AND not scheduled for close: suspend and move to keepAliveViewTarget (awaited)
+        ' - scheduled for close: just hide; lifecycle is handled by the close loops below
         ' - otherwise: hide and fire onViewSuspend
         if m.__router_activeView <> Invalid then
-            if NOT isActiveInCloseViews AND rodash.getBoolean(m.__router_activeView.route.routeConfig.keepAlive, "enabled") then
+            if NOT isActiveScheduledForClose AND rodash.getBoolean(m.__router_activeView.route.routeConfig.keepAlive, "enabled") then
                 promisesToResolve.push(suspendView(m.__router_activeView))
             else
-                hideView(m.__router_activeView, NOT isActiveInCloseViews)
+                hideView(m.__router_activeView, NOT isActiveScheduledForClose)
             end if
         end if
 
@@ -723,6 +737,14 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
                 else
                     promisesToResolve.push(cv@._beforeViewClose(params))
                 end if
+            end for
+        end if
+
+        ' Force-close views: always call _beforeViewClose regardless of keepAlive.
+        ' Used for replace semantics where the replaced view must be destroyed entirely.
+        if rodash.isNonEmptyArray(internalContext.forceCloseViews) then
+            for each cv in internalContext.forceCloseViews
+                promisesToResolve.push(cv@._beforeViewClose({ route: cv.route }))
             end for
         end if
 
@@ -754,6 +776,13 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
                 else
                     if hideView(cv, false) then rodash.removeNode(cv)
                 end if
+            end for
+        end if
+
+        ' Force-close views are always destroyed, never suspended into keepAliveViewTarget.
+        if rodash.isNonEmptyArray(internalContext.forceCloseViews) then
+            for each cv in internalContext.forceCloseViews
+                if hideView(cv, false) then rodash.removeNode(cv)
             end for
         end if
 
@@ -872,6 +901,19 @@ function showView(view as Object, onResume = false as Boolean) as Dynamic
             if NOT m.__router_processingPopTo then
                 if context.view.route.navigationState.fromPopState then
                     m.__router_historyStack.pop()
+                else if context.view.route.navigationState.fromReplaceState then
+                    if context.view.route.routeConfig.clearStackOnResolve then
+                        ' clearStackOnResolve wins: wipe history, then add the single new entry.
+                        m.__router_historyStack = []
+                        m.__router_historyStack.push({ path: context.view.route.path, nodeId: context.view.id })
+                    else
+                        lastIndex = m.__router_historyStack.count() - 1
+                        if lastIndex >= 0 then
+                            m.__router_historyStack[lastIndex] = { path: context.view.route.path, nodeId: context.view.id }
+                        else
+                            m.__router_historyStack.push({ path: context.view.route.path, nodeId: context.view.id })
+                        end if
+                    end if
                 else
                     if context.view.route.routeConfig.clearStackOnResolve then
                         m.__router_historyStack = []
@@ -917,6 +959,7 @@ sub _applyPopNavigationState(view as Object, fromKeepAlive = false as Boolean)
         fromKeepAlive: fromKeepAlive
         fromPopState: true
         fromPushState: false
+        fromReplaceState: false
         fromRedirect: false
     })
 end sub
@@ -1071,6 +1114,7 @@ function createBaseNavigationState() as Object
         fromKeepAlive: false
         fromPopState: false
         fromPushState: false
+        fromReplaceState: false
     }
 end function
 

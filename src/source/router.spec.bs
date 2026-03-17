@@ -941,6 +941,150 @@ namespace tests
         end function
 
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("replace")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        @async()
+        @it("replaces the current history entry instead of pushing a new one")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router, replace: true })
+            end function).then(function(_, m)
+                ' Stack should have only one entry: /beta replaced /alpha
+                result = sgRouter.goBack({ router: m.router })
+                m.assertFalse(result)
+                m.assertEqual(m.router.routerState.url, "/beta")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("destroys the replaced view (not just hides it)")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router, replace: true })
+            end function).then(function(_, m)
+                ' /alpha should be destroyed; only /beta remains in viewTarget
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router.routerState.url, "/beta")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("suspends a keepAlive replaced view into keepAliveViewTarget")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router, replace: true })
+            end function).then(function(_, m)
+                ' /alpha has keepAlive and was replaced: it should be suspended, not destroyed.
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                ' Only /beta is visible in viewTarget.
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router.routerState.url, "/beta")
+                ' Stack has a single entry — goBack is not possible.
+                result = sgRouter.goBack({ router: m.router })
+                m.assertFalse(result)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("replace mid-stack preserves entries below the replaced view")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            ' Stack after: [/alpha, /gamma] — /beta replaced by /gamma
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router, replace: true })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/gamma")
+                ' Two views in stack: /alpha (hidden) + /gamma (active)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 2)
+                ' goBack should land on /alpha
+                result = sgRouter.goBack({ router: m.router })
+                m.assertTrue(result)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("emits NavigationStart and NavigationEnd router state events")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.navigateTo("/beta", { router: m.router, replace: true })
+            end function).then(function(_, m)
+                history = getGlobalAA().routerStatesHistory
+                m.assertEqual(history[0], "NavigationStart")
+                m.assertEqual(history[history.count() - 1], "NavigationEnd")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("works with named routes")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", name: "alpha" }
+                { pattern: "/beta", component: "View", name: "beta" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo({ name: "beta" }, { router: m.router, replace: true })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/beta")
+                result = sgRouter.goBack({ router: m.router })
+                m.assertFalse(result)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("clearStackOnResolve wins over replace: history is fully cleared, not just last entry replaced")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/root", component: "View", clearStackOnResolve: true }
+            ])
+            ' Build up a two-entry stack, then replace-navigate to a clearStackOnResolve route.
+            ' Expected: only /root in viewTarget and only one history entry — goBack returns false.
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/root", { router: m.router, replace: true })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/root")
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                result = sgRouter.goBack({ router: m.router })
+                m.assertFalse(result)
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("getActiveRoute")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @it("returns Invalid when no navigation has occurred yet")
