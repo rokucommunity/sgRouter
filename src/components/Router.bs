@@ -171,7 +171,7 @@ end function
 ' If identifier is Invalid or omitted, the active route's path is used as the identifier.
 ' Multiple identifiers may be registered on the same route; duplicates are ignored.
 ' @param {Dynamic} identifier - A string checkpoint identifier, or Invalid to use the active route's path
-sub _setCheckPoint(identifier = Invalid as Dynamic)
+sub _setCheckpoint(identifier = Invalid as Dynamic)
     if m.__router_historyStack.count() = 0 then return
 
     ' Resolve identifier: if Invalid/omitted, use the active route's path
@@ -208,14 +208,14 @@ end sub
 ' No canDeactivate guards run.
 ' @param {Dynamic} identifier - A string checkpoint identifier to search for, or Invalid to find any checkpoint
 ' @returns {Dynamic} - A promise that resolves when navigation completes, or rejects if no checkpoint found
-function _popToCheckPoint(identifier = Invalid as Dynamic) as Dynamic
+function _popToCheckpoint(identifier = Invalid as Dynamic) as Dynamic
     if m.__router_navigationInProgress then return _rejectNavigationInProgress()
     m.__router_processingGoBack = true
 
     ' Validate identifier type if provided
     if identifier <> Invalid AND NOT rodash.isNonEmptyString(identifier) then
         m.__router_processingGoBack = false
-        return promises.reject({ message: "popToCheckPoint: identifier must be a non-empty string or Invalid" })
+        return promises.reject({ message: "popToCheckpoint: identifier must be a non-empty string or Invalid" })
     end if
 
     ' Search the stack from top to bottom, skipping the current view (last entry)
@@ -237,7 +237,7 @@ function _popToCheckPoint(identifier = Invalid as Dynamic) as Dynamic
 
     if targetIndex = -1 then
         m.__router_processingGoBack = false
-        return promises.reject({ message: "popToCheckPoint: no matching checkpoint found in history stack" })
+        return promises.reject({ message: "popToCheckpoint: no matching checkpoint found in history stack" })
     end if
 
     ' Find the target view node by nodeId
@@ -248,7 +248,7 @@ function _popToCheckPoint(identifier = Invalid as Dynamic) as Dynamic
 
     if targetView = Invalid then
         m.__router_processingGoBack = false
-        return promises.reject({ message: "popToCheckPoint: view not found for checkpoint target" })
+        return promises.reject({ message: "popToCheckpoint: view not found for checkpoint target" })
     end if
 
     ' Collect node IDs to close (stack entries above targetIndex)
@@ -868,7 +868,7 @@ function showView(view as Object, onResume = false as Boolean) as Dynamic
             ' History updates should be based on navigation state, not onResume.
             ' - fromPopState: pop history
             ' - fromPushState: push history (including keepAlive resumes)
-            ' - processingPopTo: stack already managed by _popToCheckPoint, skip all history updates
+            ' - processingPopTo: stack already managed by _popToCheckpoint, skip all history updates
             if NOT m.__router_processingPopTo then
                 if context.view.route.navigationState.fromPopState then
                     m.__router_historyStack.pop()
@@ -906,12 +906,12 @@ end function
 '*************************************************************************
 
 ' Returns a rejected promise for the "navigation already in progress" guard used in
-' _popToCheckPoint and _navigateTo. Centralises the message string in one place.
+' _popToCheckpoint and _navigateTo. Centralises the message string in one place.
 function _rejectNavigationInProgress() as Dynamic
     return promises.reject({ message: "Navigation already in progress" })
 end function
 
-' Stamps a pop-style navigationState onto a view's route, used by both _goBack and _popToCheckPoint.
+' Stamps a pop-style navigationState onto a view's route, used by both _goBack and _popToCheckpoint.
 sub _applyPopNavigationState(view as Object, fromKeepAlive = false as Boolean)
     view.route.navigationState = rodash.merge(view.route.navigationState, {
         fromKeepAlive: fromKeepAlive

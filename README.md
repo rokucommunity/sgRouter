@@ -445,28 +445,28 @@ Checkpoints let you mark a stack entry as a named "save point" and later unwind 
 
 ### 1) Mark a checkpoint
 
-Call `setCheckPoint` at any time to stamp the currently active stack entry:
+Call `setCheckpoint` at any time to stamp the currently active stack entry:
 
 ```brightscript
 ' Mark the current view with a named identifier
-sgRouter.setCheckPoint("checkout-start")
+sgRouter.setCheckpoint("checkout-start")
 ```
 
 - `identifier` is a string. If omitted (or `Invalid`), the current route's path is used as the identifier.
-- A single stack entry can hold multiple identifiers — calling `setCheckPoint` again with a different name on the same view just adds another identifier (idempotent).
+- A single stack entry can hold multiple identifiers — calling `setCheckpoint` again with a different name on the same view just adds another identifier.
 - No-op when the stack is empty.
 
 ```brightscript
 ' Omit the identifier — uses the active route path automatically
-sgRouter.setCheckPoint()
+sgRouter.setCheckpoint()
 ```
 
 ### 2) Unwind to a checkpoint
 
-Call `popToCheckPoint` to close every view above the most recent matching checkpoint and restore that view as active:
+Call `popToCheckpoint` to close every view above the most recent matching checkpoint and restore that view as active:
 
 ```brightscript
-sgRouter.popToCheckPoint("checkout-start")
+sgRouter.popToCheckpoint("checkout-start")
 ```
 
 - Searches **backwards** from the entry below the current view.
@@ -475,7 +475,7 @@ sgRouter.popToCheckPoint("checkout-start")
 
 ```brightscript
 ' Pop to the most recent checkpoint regardless of identifier
-sgRouter.popToCheckPoint()
+sgRouter.popToCheckpoint()
 ```
 
 ### Example: Multi-step checkout flow
@@ -484,16 +484,16 @@ sgRouter.popToCheckPoint()
 ' --- CatalogScreen.bs ---
 function onViewOpen(params as object) as dynamic
     ' Mark this view as the start of the checkout flow
-    sgRouter.setCheckPoint("shop")
+    sgRouter.setCheckpoint("shop")
     return promises.resolve(invalid)
 end function
 
 ' --- CheckoutConfirmScreen.bs ---
 function onCancelPressed() as void
     ' Jump all the way back to the catalog in one call
-    promises.chain(sgRouter.popToCheckPoint("shop"), m)
+    promises.chain(sgRouter.popToCheckpoint("shop"), m)
         .catch(function(error, m)
-            print "popToCheckPoint failed: " + error.message
+            print "popToCheckpoint failed: " + error.message
         end function)
         .toPromise()
 end function
@@ -503,31 +503,31 @@ end function
 
 - **Views above the target** — all closed and destroyed, including any `keepAlive` views that were suspended. No views above the target are preserved.
 - **The target view** — if it was suspended in `keepAliveViewTarget` it is restored to `viewTarget`; `onViewResume` fires as normal.
-- **History stack** — truncated to `[0..targetIndex]`. A `goBack` immediately after `popToCheckPoint` sees only the entries up to and including the target.
+- **History stack** — truncated to `[0..targetIndex]`. A `goBack` immediately after `popToCheckpoint` sees only the entries up to and including the target.
 
 ```brightscript
 ' Stack: /home [checkpoint="shop"] → /details/42 → /cart → /checkout
-sgRouter.popToCheckPoint("shop")
+sgRouter.popToCheckpoint("shop")
 ' Stack after: /home
 ' /details/42, /cart, and /checkout are destroyed; /home is the active view
 ```
 
 ### Error cases
 
-`popToCheckPoint` rejects (returns a rejected promise) in the following situations:
+`popToCheckpoint` rejects (returns a rejected promise) in the following situations:
 
 | Situation | Rejection message |
 |---|---|
-| No matching checkpoint found in the history stack | `"popToCheckPoint: no checkpoint found"` |
+| No matching checkpoint found in the history stack | `"popToCheckpoint: no checkpoint found"` |
 | Another navigation is already in progress | `"Navigation already in progress"` |
 
 ```brightscript
-promises.chain(sgRouter.popToCheckPoint("checkout-start"), m)
+promises.chain(sgRouter.popToCheckpoint("checkout-start"), m)
     .then(function(_, m)
         ' successfully popped to checkpoint
     end function)
     .catch(function(error, m)
-        print "popToCheckPoint failed: " + error.message
+        print "popToCheckpoint failed: " + error.message
     end function)
     .toPromise()
 ```

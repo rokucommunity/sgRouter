@@ -68,10 +68,10 @@ namespace sgRouter
     ' @param identifier - A string identifier for the checkpoint, or Invalid to use the active route's path
     ' @param options - The options to pass to the router
     ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
-    sub setCheckPoint(identifier = Invalid as Dynamic, options = {} as Object)
+    sub setCheckpoint(identifier = Invalid as Dynamic, options = {} as Object)
         r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
-            r@._setCheckPoint(identifier)
+            r@._setCheckpoint(identifier)
         end if
     end sub
 
@@ -83,10 +83,10 @@ namespace sgRouter
     ' @param options - The options to pass to the router
     ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
     ' @return - A promise that resolves when navigation completes, or rejects if no matching checkpoint is found
-    function popToCheckPoint(identifier = Invalid as Dynamic, options = {} as Object) as Dynamic
+    function popToCheckpoint(identifier = Invalid as Dynamic, options = {} as Object) as Dynamic
         r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
-            return r@._popToCheckPoint(identifier)
+            return r@._popToCheckpoint(identifier)
         end if
         return promises.reject({ message: "No router found" })
     end function

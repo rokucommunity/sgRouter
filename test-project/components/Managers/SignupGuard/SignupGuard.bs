@@ -8,6 +8,6 @@ function canActivate(route = {} as Object) as Dynamic
 		return true
 	end if
 
-	sgRouter.setCheckPoint()
+	sgRouter.setCheckpoint()
 	return sgRouter.createRedirectCommand("/signup")
 end function
