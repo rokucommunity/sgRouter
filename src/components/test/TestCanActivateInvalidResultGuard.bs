@@ -1,0 +1,4 @@
+function canActivate(config = Invalid as Dynamic) as Dynamic
+    ' Returns Invalid — neither boolean nor AA — to test invalid guard result handling
+    return Invalid
+end function

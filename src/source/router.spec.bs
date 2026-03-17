@@ -603,6 +603,80 @@ namespace tests
             end function).toPromise()
         end function
 
+        @async()
+        @it("string class name guard allows navigation")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", canDeactivate: ["TestCanDeactivateGuard"] }
+                { pattern: "/beta", component: "View" }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/beta")
+                m.assertTrue(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationEnd") <> -1)
+                m.assertFalse(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationCancel") <> -1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("multiple guards — blocks when first guard returns false")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            guard1 = createObject("roSGNode", "TestCanDeactivateGuard")
+            guard1.returnValue = false
+            guard2 = createObject("roSGNode", "TestCanDeactivateGuard")
+            guard2.returnValue = true
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", canDeactivate: [guard1, guard2] }
+                { pattern: "/beta", component: "View" }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("Navigation should have been rejected")
+            end function).catch(function(error, m)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+                m.assertTrue(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationCancel") <> -1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("multiple guards — allows navigation when all guards pass")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            guard1 = createObject("roSGNode", "TestCanDeactivateGuard")
+            guard1.returnValue = true
+            guard2 = createObject("roSGNode", "TestCanDeactivateGuard")
+            guard2.returnValue = true
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", canDeactivate: [guard1, guard2] }
+                { pattern: "/beta", component: "View" }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/beta")
+                m.assertTrue(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationEnd") <> -1)
+                m.assertFalse(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationCancel") <> -1)
+            end function).toPromise()
+        end function
+
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("canActivate")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -675,6 +749,104 @@ namespace tests
                 return sgRouter.navigateTo("/beta", { router: m.router })
             end function).then(function(_, m)
                 m.assertEqual(m.router.routerState.url, "/alpha")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("string class name guard allows navigation")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", canActivate: ["TestCanActivateGuard"] }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/beta")
+                m.assertTrue(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationEnd") <> -1)
+                m.assertFalse(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationCancel") <> -1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("multiple guards — blocks when first guard returns false")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            guard1 = createObject("roSGNode", "TestCanActivateGuard")
+            guard1.returnValue = false
+            guard2 = createObject("roSGNode", "TestCanActivateGuard")
+            guard2.returnValue = true
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", canActivate: [guard1, guard2] }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("Navigation should have been rejected")
+            end function).catch(function(error, m)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+                m.assertTrue(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationCancel") <> -1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("multiple guards — allows navigation when all guards pass")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            guard1 = createObject("roSGNode", "TestCanActivateGuard")
+            guard1.returnValue = true
+            guard2 = createObject("roSGNode", "TestCanActivateGuard")
+            guard2.returnValue = true
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", canActivate: [guard1, guard2] }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/beta")
+                m.assertTrue(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationEnd") <> -1)
+                m.assertFalse(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationCancel") <> -1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("cancels navigation when canActivate guard returns an invalid result type")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+
+            guard = createObject("roSGNode", "TestCanActivateInvalidResultGuard")
+
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", canActivate: [guard] }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("Navigation should have been rejected")
+            end function).catch(function(error, m)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+                m.assertTrue(rodash.indexOf(getGlobalAA().routerStatesHistory, "NavigationCancel") <> -1)
             end function).toPromise()
         end function
 
