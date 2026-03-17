@@ -1,0 +1,15 @@
+import "pkg:/source/router.bs"
+
+function canActivate(config = Invalid as Dynamic) as Dynamic
+    redirectPath = Invalid
+
+    ' Prefer an explicit config value if provided
+    if config <> Invalid AND config.redirectPath <> Invalid then
+        redirectPath = config.redirectPath
+        ' Fall back to component field when running as an SG node
+    else if m.top.redirectPath <> Invalid then
+        redirectPath = m.top.redirectPath
+    end if
+
+    return sgRouter.createRedirectCommand(redirectPath)
+end function

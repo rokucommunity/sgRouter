@@ -22,7 +22,7 @@ sub onButtonPress(event as Object)
     button = event.getData()
     navigateTo = Invalid
     if button = 0 then
-        m.global.AuthManager.isLoggedIn = true
+        if m.global.CanDeactivateManager.enabled then m.global.AuthManager.isLoggedIn = true
         return
     else if button = 1 then
         navigateTo = "/shows"

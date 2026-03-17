@@ -1,0 +1,3 @@
+function canDeactivate(params = {} as Object) as Boolean
+    return m.top.enabled
+end function

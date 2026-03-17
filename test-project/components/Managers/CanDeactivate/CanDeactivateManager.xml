@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="CanDeactivateManager" extends="Node">
+    <interface>
+        <field id="enabled" type="boolean" value="true" />
+        <function name="canDeactivate" />
+    </interface>
+</component>

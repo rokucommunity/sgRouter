@@ -5,7 +5,8 @@
 		"source/**/*",
 		"components/**/*",
 		//exclude all test files files.
-		"!**/*.spec.bs"
+		"!**/*.spec.bs",
+		"!components/test/**"
 	],
 	"emitDefinitions": true,
 	"createPackage": false,
