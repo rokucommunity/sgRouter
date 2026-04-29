@@ -168,15 +168,15 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
 end function
 
 ' Marks the current active stack entry with a checkpoint identifier.
-' If identifier is Invalid or omitted, the active route's path is used as the identifier.
+' If identifier is omitted, the active route's path is used as the identifier.
 ' Multiple identifiers may be registered on the same route; duplicates are ignored.
-' @param {Dynamic} identifier - A string checkpoint identifier, or Invalid to use the active route's path
-function _setCheckpoint(identifier = Invalid as Dynamic) as Boolean
+' @param {Dynamic} identifier - A non-empty string checkpoint identifier, or omit to use the active route's path
+function _setCheckpoint(identifier = "__INVALID__" as Dynamic) as Boolean
     if m.__router_historyStack.count() = 0 then return false
 
-    ' Resolve identifier: if Invalid/omitted, use the active route's path
+    ' Resolve identifier: if omitted, use the active route's path
     resolvedId = identifier
-    if resolvedId = Invalid then
+    if resolvedId = "__INVALID__" then
         activeRoute = _getActiveRoute()
         if activeRoute = Invalid then return false
         resolvedId = activeRoute.path
@@ -205,25 +205,24 @@ end function
 ' Unwinds the history stack to the most recent checkpointed route.
 ' If identifier is provided, pops to the most recent route with that checkpoint identifier.
 ' If identifier is omitted, pops to the most recent route with any checkpoint.
-' All routes above the target are destroyed (including keepAlive views — no suspension).
+' keepAlive views above the target are suspended; non-keepAlive views are destroyed.
 ' No canDeactivate guards run.
-' @param {Dynamic} identifier - A string checkpoint identifier to search for, or Invalid to find any checkpoint
+' @param {Dynamic} identifier - A non-empty string checkpoint identifier to search for, or omit to find any checkpoint
 ' @returns {Dynamic} - A promise that resolves when navigation completes, or rejects if no checkpoint found
-function _popToCheckpoint(identifier = Invalid as Dynamic) as Dynamic
+function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
     if m.__router_navigationInProgress then return _rejectNavigationInProgress()
     m.__router_processingGoBack = true
 
-    ' Validate identifier type if provided
-    if identifier <> Invalid AND NOT rodash.isNonEmptyString(identifier) then
+    if NOT rodash.isNonEmptyString(identifier) then
         m.__router_processingGoBack = false
-        return promises.reject({ message: "popToCheckpoint: identifier must be a non-empty string or Invalid" })
+        return promises.reject({ message: "popToCheckpoint: identifier must be a non-empty string" })
     end if
 
     ' Search the stack from top to bottom, skipping the current view (last entry)
     targetIndex = -1
     for i = m.__router_historyStack.count() - 2 to 0 step -1
         entry = m.__router_historyStack[i]
-        if identifier <> Invalid then
+        if identifier <> "__INVALID__" then
             if entry.hasCheckpoint = true AND entry.checkpointIds[identifier] = true then
                 targetIndex = i
                 exit for

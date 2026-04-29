@@ -487,7 +487,7 @@ namespace tests
                 return sgRouter.navigateTo("/beta", { router: m.router })
             end function).then(function(_, m)
                 ' setCheckpoint() with no identifier uses the active route path "/beta"
-                sgRouter.setCheckpoint(Invalid, { router: m.router })
+                sgRouter.setCheckpoint("__INVALID__", { router: m.router })
                 return sgRouter.navigateTo("/gamma", { router: m.router })
             end function).then(function(_, m)
                 return sgRouter.popToCheckpoint("/beta", { router: m.router })
@@ -719,7 +719,7 @@ namespace tests
                 return sgRouter.navigateTo("/delta", { router: m.router })
             end function).then(function(_, m)
                 ' /gamma is the most recent checkpointed route; pop with no identifier lands there
-                return sgRouter.popToCheckpoint(Invalid, { router: m.router })
+                return sgRouter.popToCheckpoint("__INVALID__", { router: m.router })
             end function).then(function(_, m)
                 m.assertEqual(m.router.routerState.url, "/gamma")
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 3)
