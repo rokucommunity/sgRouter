@@ -518,7 +518,7 @@ sgRouter.popToCheckpoint("shop")
 
 | Situation | Rejection message |
 |---|---|
-| No matching checkpoint found in the history stack | `"popToCheckpoint: no checkpoint found"` |
+| No matching checkpoint found in the history stack | `"popToCheckpoint: no matching checkpoint found in history stack"` |
 | Another navigation is already in progress | `"Navigation already in progress"` |
 
 ```brightscript
