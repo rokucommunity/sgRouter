@@ -68,12 +68,13 @@ namespace sgRouter
     ' @param identifier - A string identifier for the checkpoint, or Invalid to use the active route's path
     ' @param options - The options to pass to the router
     ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
-    sub setCheckpoint(identifier = Invalid as Dynamic, options = {} as Object)
+    function setCheckpoint(identifier = Invalid as Dynamic, options = {} as Object) as Boolean
         r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
-            r@._setCheckpoint(identifier)
+            return r@._setCheckpoint(identifier)
         end if
-    end sub
+        return false
+    end function
 
     ' Unwinds the history stack to the most recent checkpointed route.
     ' If identifier is provided, pops to the most recent route with that checkpoint identifier.
