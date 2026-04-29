@@ -501,15 +501,15 @@ end function
 
 ### Stack behaviour
 
-- **Views above the target** — all closed and destroyed, including any `keepAlive` views that were suspended. No views above the target are preserved.
+- **Views above the target** — removed from the active navigation stack. Non-`keepAlive` views are closed and destroyed; suspended `keepAlive` views are not restored, but remain suspended in `keepAliveViewTarget`.
 - **The target view** — if it was suspended in `keepAliveViewTarget` it is restored to `viewTarget`; `onViewResume` fires as normal.
-- **History stack** — truncated to `[0..targetIndex]`. A `goBack` immediately after `popToCheckpoint` sees only the entries up to and including the target.
+- **History stack** — truncated to `[0..targetIndex]` for navigation purposes. A `goBack` immediately after `popToCheckpoint` sees only the entries up to and including the target, even though suspended `keepAlive` views above the target may still be retained.
 
 ```brightscript
 ' Stack: /home [checkpoint="shop"] → /details/42 → /cart → /checkout
 sgRouter.popToCheckpoint("shop")
 ' Stack after: /home
-' /details/42, /cart, and /checkout are destroyed; /home is the active view
+' /details/42, /cart, and /checkout are removed from navigation; non-keepAlive views are destroyed, while suspended keepAlive views remain suspended; /home is the active view
 ```
 
 ### Error cases
