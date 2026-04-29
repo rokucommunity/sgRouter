@@ -12,7 +12,6 @@ sub init()
     m.__router_navigationInProgress = false
     m.__router_outlet = Invalid
     m.__router_processingGoBack = false
-    m.__router_processingPopTo = false
     m.__router_routes = {}
 
     m.top.focusable = true
@@ -54,7 +53,6 @@ sub _destroy(_ = Invalid as Dynamic)
     m.__router_navigationInProgress = false
     m.__router_outlet = Invalid
     m.__router_processingGoBack = false
-    m.__router_processingPopTo = false
     m.__router_routes = {}
 
     rodash.removeNodeChildren(m.__router_viewTarget)
@@ -161,6 +159,7 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     promises.chain(closePromise, viewToOpen).then(sub(_ as Dynamic, view as Dynamic)
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
         _applyPopNavigationState(view)
+        m.__router_historyStack.pop()
         showView(view, true)
     end sub)
 
@@ -289,14 +288,12 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
         closePromises.push(closeOrSuspendView(cv))
     end for
 
-    m.__router_processingPopTo = true
     return promises.chain(promises.all(closePromises), { targetView: targetView, targetFromKeepAlive: targetFromKeepAlive }).then(function(_ as Dynamic, ctx as Dynamic) as Dynamic
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
         _applyPopNavigationState(ctx.targetView, ctx.targetFromKeepAlive)
         return showView(ctx.targetView, true)
     end function).catch(function(error as Dynamic) as Dynamic
         m.__router_processingGoBack = false
-        m.__router_processingPopTo = false
         m.__router_navigationInProgress = false
         return promises.reject(error)
     end function).toPromise()
@@ -865,26 +862,19 @@ function showView(view as Object, onResume = false as Boolean) as Dynamic
                 m.top.setFocus(true)
             end if
 
-            ' History updates should be based on navigation state, not onResume.
-            ' - fromPopState: pop history
+            ' History updates: skip for backward navigation (stack already managed before showView).
             ' - fromPushState: push history (including keepAlive resumes)
-            ' - processingPopTo: stack already managed by _popToCheckpoint, skip all history updates
-            if NOT m.__router_processingPopTo then
-                if context.view.route.navigationState.fromPopState then
-                    m.__router_historyStack.pop()
-                else
-                    if context.view.route.routeConfig.clearStackOnResolve then
-                        m.__router_historyStack = []
-                    end if
+            if NOT m.__router_processingGoBack then
+                if context.view.route.routeConfig.clearStackOnResolve then
+                    m.__router_historyStack = []
+                end if
 
-                    if context.view.route.navigationState.fromPushState then
-                        m.__router_historyStack.push({ path: context.view.route.path, nodeId: context.view.id })
-                    end if
+                if context.view.route.navigationState.fromPushState then
+                    m.__router_historyStack.push({ path: context.view.route.path, nodeId: context.view.id })
                 end if
             end if
 
             m.__router_processingGoBack = false
-            m.__router_processingPopTo = false
             dispatchRouterState(RouterState.NavigationEnd, {
                 id: context.view.id
                 route: context.view.route
