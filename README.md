@@ -501,9 +501,9 @@ end function
 
 ### Stack behaviour
 
-- **Views above the target** — removed from the active navigation stack. Non-`keepAlive` views are closed and destroyed; suspended `keepAlive` views are not restored, but remain suspended in `keepAliveViewTarget`.
+- **Views above the target** — removed from the active navigation stack. Non-`keepAlive` views are closed and destroyed; `keepAlive` views that were already suspended remain suspended in `keepAliveViewTarget` (the checkpoint operation does not affect their suspended state).
 - **The target view** — if it was suspended in `keepAliveViewTarget` it is restored to `viewTarget`; `onViewResume` fires as normal.
-- **History stack** — truncated to `[0..targetIndex]` for navigation purposes. A `goBack` immediately after `popToCheckpoint` sees only the entries up to and including the target, even though suspended `keepAlive` views above the target may still be retained.
+- **History stack** — truncated to `[0..targetIndex]` for navigation purposes. A `goBack` immediately after `popToCheckpoint` sees only the entries up to and including the target, even though suspended `keepAlive` views above the target are still retained in `keepAliveViewTarget`.
 
 ```brightscript
 ' Stack: /home [checkpoint="shop"] → /details/42 → /cart → /checkout
