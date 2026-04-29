@@ -382,7 +382,7 @@ params.route.queryParams          ' parsed from ?key=value pairs
 params.route.hash                 ' parsed from #hash
 params.route.navigationState      ' how this navigation was triggered:
   .fromPushState                  '   true on normal forward navigation
-  .fromPopState                   '   true when arriving via goBack()
+  .fromPopState                   '   true when arriving via goBack() or popToCheckpoint()
   .fromKeepAlive                  '   true when a keepAlive view is resumed
   .fromRedirect                   '   true when arrived via a canActivate guard redirect
 ```
