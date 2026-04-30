@@ -49,8 +49,10 @@ sub init()
                 },
                 denyRedirect: "/"
         }] },
-        { pattern: "/details/:type/:id", component: "DetailsScreen", name: "DetailsView", keepAlive: { enabled: true }, canActivate: [m.global.AuthManager] },
-        { pattern: "/details/:type/:id/cast", component: "CastDetailsScreen", canActivate: [m.global.AuthManager] },
+        { pattern: "/signup", component: "SignupScreen" },
+        { pattern: "/signup/verify", component: "VerifyEmailScreen" },
+        { pattern: "/details/:type/:id", component: "DetailsScreen", name: "DetailsView", keepAlive: { enabled: true }, canActivate: [m.global.AuthManager, "SignupGuard"] },
+        { pattern: "/details/:type/:id/cast", component: "CastDetailsScreen", canActivate: [m.global.AuthManager, "SignupGuard"] },
         { pattern: "/:screenName", component: "DefaultScreen" }
     ])
 

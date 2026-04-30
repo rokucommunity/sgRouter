@@ -2,6 +2,7 @@
 <component name="AuthManager" extends="Node">
     <interface>
         <field id="isLoggedIn" type="boolean" value="false" />
+        <field id="isEmailVerified" type="boolean" value="false" />
         <function name="canActivate" />
     </interface>
 </component>

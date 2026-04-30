@@ -25,7 +25,7 @@
 - **Named routes** — navigate by intent, not by hardcoded path strings
 - **Route guards** (`canActivate`) for protected screens
 - **View lifecycle hooks** for fine-grained control
-- **Stack management** (navigation, suspension, resume)
+- **Stack management** (navigation, suspension, resume, and checkpoint-based unwinding)
 - **Observable router state** for debugging or analytics
 
 ---
@@ -382,7 +382,7 @@ params.route.queryParams          ' parsed from ?key=value pairs
 params.route.hash                 ' parsed from #hash
 params.route.navigationState      ' how this navigation was triggered:
   .fromPushState                  '   true on normal forward navigation
-  .fromPopState                   '   true when arriving via goBack()
+  .fromPopState                   '   true when arriving via goBack() or popToCheckpoint()
   .fromKeepAlive                  '   true when a keepAlive view is resumed
   .fromRedirect                   '   true when arrived via a canActivate guard redirect
 ```
@@ -436,6 +436,101 @@ The route snapshot is assembled by the router by parsing:
 - the **hash** → `hash`
 
 That structured object is then provided to the view lifecycles mentioned above. This keeps your screens URL-driven and easy to test (you can navigate with different URLs and assert behavior based on `params`).
+
+---
+
+## ⏪ Checkpoints — Unwind the Stack to a Known Point
+
+Checkpoints let you mark a stack entry as a named "save point" and later unwind back to it in one call. This is useful for multi-step flows (e.g. checkout, onboarding, sign-in) where you want to jump back to a known entry point without calling `goBack` repeatedly.
+
+### 1) Mark a checkpoint
+
+Call `setCheckpoint` at any time to stamp the currently active stack entry:
+
+```brightscript
+' Mark the current view with a named identifier
+sgRouter.setCheckpoint("checkout-start")
+```
+
+- `identifier` is a string. If omitted (or `Invalid`), the current route's path is used as the identifier.
+- A single stack entry can hold multiple identifiers — calling `setCheckpoint` again with a different name on the same view just adds another identifier.
+- No-op when the stack is empty.
+
+```brightscript
+' Omit the identifier — uses the active route path automatically
+sgRouter.setCheckpoint()
+```
+
+### 2) Unwind to a checkpoint
+
+Call `popToCheckpoint` to close every view above the most recent matching checkpoint and restore that view as active:
+
+```brightscript
+sgRouter.popToCheckpoint("checkout-start")
+```
+
+- Searches **backwards** from the entry below the current view.
+- If `identifier` is omitted (or `Invalid`), finds the most recent entry that has **any** checkpoint.
+- Returns a promise that resolves when the target view is active.
+
+```brightscript
+' Pop to the most recent checkpoint regardless of identifier
+sgRouter.popToCheckpoint()
+```
+
+### Example: Multi-step checkout flow
+
+```brightscript
+' --- CatalogScreen.bs ---
+function onViewOpen(params as object) as dynamic
+    ' Mark this view as the start of the checkout flow
+    sgRouter.setCheckpoint("shop")
+    return promises.resolve(invalid)
+end function
+
+' --- CheckoutConfirmScreen.bs ---
+function onCancelPressed() as void
+    ' Jump all the way back to the catalog in one call
+    promises.chain(sgRouter.popToCheckpoint("shop"), m)
+        .catch(function(error, m)
+            print "popToCheckpoint failed: " + error.message
+        end function)
+        .toPromise()
+end function
+```
+
+### Stack behaviour
+
+- **Views above the target** — removed from the active navigation stack. Non-`keepAlive` views are closed and destroyed; `keepAlive` views that were already suspended remain suspended in `keepAliveViewTarget` (the checkpoint operation does not affect their suspended state).
+- **The target view** — if it was suspended in `keepAliveViewTarget` it is restored to `viewTarget`; `onViewResume` fires as normal.
+- **History stack** — truncated to `[0..targetIndex]` for navigation purposes. A `goBack` immediately after `popToCheckpoint` sees only the entries up to and including the target, even though suspended `keepAlive` views above the target are still retained in `keepAliveViewTarget`.
+
+```brightscript
+' Stack: /home [checkpoint="shop"] → /details/42 → /cart → /checkout
+sgRouter.popToCheckpoint("shop")
+' Stack after: /home
+' /details/42, /cart, and /checkout are removed from navigation; non-keepAlive views are destroyed, while suspended keepAlive views remain suspended; /home is the active view
+```
+
+### Error cases
+
+`popToCheckpoint` rejects (returns a rejected promise) in the following situations:
+
+| Situation | Rejection message |
+|---|---|
+| No matching checkpoint found in the history stack | `"popToCheckpoint: no matching checkpoint found in history stack"` |
+| Another navigation is already in progress | `"Navigation already in progress"` |
+
+```brightscript
+promises.chain(sgRouter.popToCheckpoint("checkout-start"), m)
+    .then(function(_, m)
+        ' successfully popped to checkpoint
+    end function)
+    .catch(function(error, m)
+        print "popToCheckpoint failed: " + error.message
+    end function)
+    .toPromise()
+```
 
 ---
 ## 💬 Community & Support

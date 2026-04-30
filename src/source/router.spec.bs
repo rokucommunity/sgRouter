@@ -449,6 +449,534 @@ namespace tests
         end function
 
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("setCheckpoint")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        @async()
+        @it("enables popToCheckpoint to find the route by identifier")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                sgRouter.setCheckpoint("foo", { router: m.router })
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popToCheckpoint("foo", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/beta")
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 2)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("uses active route path as identifier when called without argument")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' setCheckpoint() with no identifier uses the active route path "/beta"
+                sgRouter.setCheckpoint("__INVALID__", { router: m.router })
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popToCheckpoint("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/beta")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("is idempotent — duplicate identifier on same route is ignored")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                sgRouter.setCheckpoint("foo", { router: m.router })
+                sgRouter.setCheckpoint("foo", { router: m.router })
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popToCheckpoint("foo", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/beta")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("supports multiple identifiers on the same route")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                sgRouter.setCheckpoint("foo", { router: m.router })
+                sgRouter.setCheckpoint("bar", { router: m.router })
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                ' Both "foo" and "bar" are registered on /beta; pop by "bar" resolves to /beta
+                return sgRouter.popToCheckpoint("bar", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/beta")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("second identifier on route remains after popping by the first")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+                { pattern: "/delta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                sgRouter.setCheckpoint("foo", { router: m.router })
+                sgRouter.setCheckpoint("bar", { router: m.router })
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                ' popToCheckpoint("foo") should also resolve to /beta (same route as "bar")
+                return sgRouter.popToCheckpoint("foo", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/beta")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("does nothing and popToCheckpoint rejects when stack was empty at setCheckpoint time")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            ' setCheckpoint before any navigation — stack is empty, should be a no-op
+            sgRouter.setCheckpoint("foo", { router: m.router })
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popToCheckpoint("foo", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("popToCheckpoint should have rejected — no checkpoint registered")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("popToCheckpoint")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        @async()
+        @it("rejects when navigation is already in progress")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                sgRouter.setCheckpoint("foo", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' Start a navigation (sets navigationInProgress = true)
+                sgRouter.navigateTo("/alpha", { router: m.router })
+                ' popToCheckpoint should be blocked
+                return sgRouter.popToCheckpoint("foo", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("popToCheckpoint while navigation in progress should have rejected")
+            end function).catch(function(error, m)
+                m.assertEqual(error.message, "Navigation already in progress")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("rejects when no matching checkpoint is found")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popToCheckpoint("nonexistent", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("popToCheckpoint with unknown identifier should have rejected")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("rejects when no checkpoint exists and no identifier is provided")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popToCheckpoint(Invalid, { router: m.router })
+            end function).then(function(_, m)
+                m.fail("popToCheckpoint with no checkpoints set should have rejected")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("closes views above target and makes target active")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                sgRouter.setCheckpoint("start", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 3)
+                return sgRouter.popToCheckpoint("start", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("dispatches NavigationStart and NavigationEnd")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                sgRouter.setCheckpoint("start", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.popToCheckpoint("start", { router: m.router })
+            end function).then(function(_, m)
+                history = getGlobalAA().routerStatesHistory
+                m.assertEqual(history[0], "NavigationStart")
+                m.assertEqual(history[history.count() - 1], "NavigationEnd")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("pops to the most recent route with any checkpoint when identifier is omitted")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+                { pattern: "/delta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                sgRouter.setCheckpoint("a", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                sgRouter.setCheckpoint("c", { router: m.router })
+                return sgRouter.navigateTo("/delta", { router: m.router })
+            end function).then(function(_, m)
+                ' /gamma is the most recent checkpointed route; pop with no identifier lands there
+                return sgRouter.popToCheckpoint("__INVALID__", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/gamma")
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 3)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("pops to the most recent matching checkpoint when multiple routes are checkpointed")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+                { pattern: "/delta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                sgRouter.setCheckpoint("foo", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                sgRouter.setCheckpoint("foo", { router: m.router })
+                return sgRouter.navigateTo("/delta", { router: m.router })
+            end function).then(function(_, m)
+                ' Both /alpha and /gamma have "foo"; most recent is /gamma
+                return sgRouter.popToCheckpoint("foo", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/gamma")
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 3)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("restores a keepAlive view from keepAliveViewTarget")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                sgRouter.setCheckpoint("start", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha is now in keepAliveViewTarget
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popToCheckpoint("start", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha is restored to viewTarget; keepAliveViewTarget is empty
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 0)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("suspends keepAlive views above target")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                sgRouter.setCheckpoint("start", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                ' /beta is in keepAliveViewTarget
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                return sgRouter.popToCheckpoint("start", { router: m.router })
+            end function).then(function(_, m)
+                ' /beta should remain suspended in keepAliveViewTarget, /gamma destroyed
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("suspends multiple keepAlive views above target")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/gamma", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/delta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                sgRouter.setCheckpoint("start", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/delta", { router: m.router })
+            end function).then(function(_, m)
+                ' /beta and /gamma are suspended in keepAliveViewTarget
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 2)
+                return sgRouter.popToCheckpoint("start", { router: m.router })
+            end function).then(function(_, m)
+                ' /beta and /gamma remain suspended, /delta destroyed
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 2)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("truncates history stack so subsequent goBack returns false")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                sgRouter.setCheckpoint("start", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popToCheckpoint("start", { router: m.router })
+            end function).then(function(_, m)
+                ' Stack is now just [/alpha]; goBack has nothing to go back to
+                result = sgRouter.goBack({ router: m.router })
+                m.assertFalse(result)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("allows subsequent navigation after completing")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                sgRouter.setCheckpoint("start", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popToCheckpoint("start", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router.routerState.url, "/gamma")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("rejects when identifier does not match any stack entry checkpoint")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                sgRouter.setCheckpoint("foo", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popToCheckpoint("bar", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("popToCheckpoint with non-matching identifier should have rejected")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("does not dispatch navigation events when no checkpoint is found")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router.observeField("routerState", "onRouterStateChanged")
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                getGlobalAA().routerStatesHistory = []
+                return sgRouter.popToCheckpoint("missing", { router: m.router })
+            end function).then(function(_, m)
+                m.fail("Should have rejected")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+                m.assertEqual(getGlobalAA().routerStatesHistory, [])
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("rejects when an invalid type is passed as identifier")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                sgRouter.setCheckpoint("foo", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popToCheckpoint({ id: "foo" }, { router: m.router })
+            end function).then(function(_, m)
+                m.fail("popToCheckpoint with non-string identifier should have rejected")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("getActiveRoute")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @it("returns Invalid when no navigation has occurred yet")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" },
+            ])
+
+            result = sgRouter.getActiveRoute({ router: m.router })
+            m.assertInvalid(result)
+        end function
+
+        @async()
+        @it("returns the active route after navigation")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" },
+                { pattern: "/beta", component: "View" },
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_result, m)
+                activeRoute = sgRouter.getActiveRoute({ router: m.router })
+                m.assertNotInvalid(activeRoute)
+                m.assertEqual(activeRoute.path, "/alpha")
+            end function).toPromise()
+        end function
+
+        @it("returns Invalid when no router is found in the chain")
+        function _() 'bs:disable-line 1026 LINT1026
+            result = sgRouter.getActiveRoute({ router: Invalid })
+            m.assertInvalid(result)
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("getRoutes")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @it("getRoutes")
