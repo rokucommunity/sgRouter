@@ -292,6 +292,8 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
         _applyPopNavigationState(ctx.targetView, ctx.targetFromKeepAlive)
         return showView(ctx.targetView, true)
+    end function).then(function(_ as Dynamic, ctx as Dynamic) as Dynamic
+        return promises.resolve(Invalid)
     end function).catch(function(error as Dynamic) as Dynamic
         m.__router_processingGoBack = false
         m.__router_navigationInProgress = false
