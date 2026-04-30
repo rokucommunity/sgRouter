@@ -176,18 +176,19 @@ end function
 ' If identifier is omitted, the active route's path is used as the identifier.
 ' Multiple identifiers may be registered on the same route; duplicates are ignored.
 ' @param {Dynamic} identifier - A non-empty string checkpoint identifier, or omit to use the active route's path
-function _setCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
-    if m.__router_historyStack.count() = 0 then return promises.resolve(false)
+function _setCheckpoint(identifier = "__INVALID__" as Dynamic) as Boolean
+    if m.__router_historyStack.count() = 0 then return false
 
     ' Resolve identifier: if omitted, use the active route's path
     resolvedId = identifier
     if resolvedId = "__INVALID__" then
         activeRoute = _getActiveRoute()
-        if activeRoute = Invalid then return promises.resolve(false)
+        if activeRoute = Invalid then return false
         resolvedId = activeRoute.path
     end if
 
-    if NOT rodash.isNonEmptyString(resolvedId) then return promises.reject({ message: "setCheckpoint: identifier must be a non-empty string" })
+    ' Checkpoint identifiers must be non-empty strings
+    if NOT rodash.isNonEmptyString(resolvedId) then return false
 
     ' Get the last stack entry (the current route)
     lastIndex = m.__router_historyStack.count() - 1
@@ -200,11 +201,11 @@ function _setCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
     end if
 
     ' Idempotent: skip if identifier already registered
-    if entry.checkpointIds[resolvedId] = true then return promises.resolve(false)
+    if entry.checkpointIds[resolvedId] = true then return true
 
     entry.checkpointIds[resolvedId] = true
     entry.hasCheckpoint = true
-    return promises.resolve(true)
+    return true
 end function
 
 ' Unwinds the history stack to the most recent checkpointed route.
@@ -218,6 +219,7 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
     if m.__router_navigationInProgress then return _rejectNavigationInProgress()
     m.__router_processingGoBack = true
 
+    ' Identifier must be a non-empty string
     if NOT rodash.isNonEmptyString(identifier) then
         m.__router_processingGoBack = false
         return promises.reject({ message: "popToCheckpoint: identifier must be a non-empty string" })
@@ -228,11 +230,14 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
     for i = m.__router_historyStack.count() - 2 to 0 step -1
         entry = m.__router_historyStack[i]
         if identifier <> "__INVALID__" then
+            ' If the entry has a checkpoint with the specified identifier, this is our target
             if entry.hasCheckpoint = true AND entry.checkpointIds[identifier] = true then
                 targetIndex = i
                 exit for
             end if
         else
+            ' The user provided no identifier, so pop to the most recent checkpoint regardless of identifier.
+            ' If the entry has any checkpoint, this is our target
             if entry.hasCheckpoint = true then
                 targetIndex = i
                 exit for
@@ -296,6 +301,8 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
         _applyPopNavigationState(ctx.targetView, ctx.targetFromKeepAlive)
         return showView(ctx.targetView, true)
+    end function).then(function(_ as Dynamic, ctx as Dynamic) as Dynamic
+        return promises.resolve(Invalid)
     end function).catch(function(error as Dynamic) as Dynamic
         m.__router_processingGoBack = false
         m.__router_navigationInProgress = false
