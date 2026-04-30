@@ -250,11 +250,18 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
         return promises.reject({ message: "popToCheckpoint: view not found for checkpoint target" })
     end if
 
-    ' Collect node IDs to close (stack entries above targetIndex)
+    ' Truncate history stack and collect node IDs to close in one pass
     nodeIdsToClose = {}
-    for i = targetIndex + 1 to m.__router_historyStack.count() - 1
-        nodeIdsToClose[m.__router_historyStack[i].nodeId] = true
+    newStack = []
+    for i = 0 to m.__router_historyStack.count() - 1
+        entry = m.__router_historyStack[i]
+        if i <= targetIndex then
+            newStack.push(entry)
+        else
+            nodeIdsToClose[entry.nodeId] = true
+        end if
     end for
+
 
     ' Reparent target from keepAliveViewTarget to viewTarget if needed
     if targetFromKeepAlive then
@@ -267,11 +274,7 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
         route: targetView.route
     })
 
-    ' Truncate history stack to just up to and including the target
-    newStack = []
-    for i = 0 to targetIndex
-        newStack.push(m.__router_historyStack[i])
-    end for
+    ' Set the new stack after the NavigationStart event in case any listeners read from the stack (e.g. for analytics)
     m.__router_historyStack = newStack
 
     ' Close or suspend views above the target (keepAlive views already in keepAliveViewTarget are left as-is)
