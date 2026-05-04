@@ -121,26 +121,9 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     previousEntry = m.__router_historyStack[m.__router_historyStack.count() - 2]
     previousNodeId = previousEntry.nodeId
 
-    ' Search viewTarget first, then keepAliveViewTarget
     foundView = findViewByNodeId(previousNodeId)
     viewToOpen = foundView.view
     viewToOpenFromKeepAlive = foundView.fromKeepAlive
-    ' KeepAlive views can have their id reassigned by addViewToStack on subsequent forward navigations.
-    ' If the nodeId is stale, check previousNodeIds on each keepAlive view to find the right node.
-    if viewToOpen = Invalid then
-        for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
-            if rodash.isArray(v.previousNodeIds) then
-                for each prevId in v.previousNodeIds
-                    if prevId = previousNodeId then
-                        viewToOpen = v
-                        viewToOpenFromKeepAlive = true
-                        exit for
-                    end if
-                end for
-            end if
-            if viewToOpen <> Invalid then exit for
-        end for
-    end if
 
     if viewToOpen = Invalid then
         m.__router_processingGoBack = false
@@ -924,11 +907,20 @@ sub _applyPopNavigationState(view as Object, fromKeepAlive = false as Boolean)
     })
 end sub
 
-' Searches the view map for a view with the given node ID (O(1)).
+' Searches the view map for a view with the given node ID.
+' Falls back to a previousNodeIds scan on keepAlive views when the ID is stale
+' (keepAlive views get a new ID on each reuse via addViewToStack).
 ' Returns { view: node, fromKeepAlive: Boolean } — view is Invalid if not found.
 function findViewByNodeId(nodeId as String) as Object
     entry = m.__router_viewMap[nodeId]
     if entry <> Invalid then return entry
+    for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
+        if rodash.isArray(v.previousNodeIds) then
+            for each prevId in v.previousNodeIds
+                if prevId = nodeId then return { view: v, fromKeepAlive: true }
+            end for
+        end if
+    end for
     return { view: Invalid, fromKeepAlive: false }
 end function
 
