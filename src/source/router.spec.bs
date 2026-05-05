@@ -415,7 +415,7 @@ namespace tests
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
         @async()
-        @it("allows a second navigateTo while the first is in progress")
+        @it("rejects a second navigateTo while the first is in progress")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
             m.router@._addRoutes([
@@ -424,10 +424,13 @@ namespace tests
             ])
             ' Start nav 1 without awaiting it
             sgRouter.navigateTo("/alpha", { router: m.router })
-            ' Immediately start nav 2 — should now be allowed through
+            ' Immediately start nav 2 — should be rejected
             nav2 = sgRouter.navigateTo("/beta", { router: m.router })
             return promises.chain(nav2, m).then(function(_, m)
-                m.assertNotInvalid(m.router@._getActiveRoute())
+                m.fail("Concurrent navigation should have been rejected")
+            end function).catch(function(error, m)
+                m.assertNotInvalid(error)
+                m.assertEqual(error.message, "Navigation already in progress")
             end function).toPromise()
         end function
 

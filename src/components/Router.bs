@@ -298,6 +298,7 @@ end function
 ' @param {Object} options - The route config overrides and navigation options
 ' @returns {Dynamic} - The result of the navigation
 function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
+    if m.__router_navigationInProgress then return _rejectNavigationInProgress()
     if m.__router_deviceInfo = Invalid then return promises.reject({ message: "Router not initialized" })
 
     if NOT rodash.isNonEmptyAA(path) AND NOT rodash.isNonEmptyString(path) then
