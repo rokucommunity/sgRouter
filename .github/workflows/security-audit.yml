@@ -8,9 +8,6 @@ on:
     #nightly at 06:00 UTC (1am EST / 2am EDT)
     - cron: '0 6 * * *'
 
-permissions:
-  contents: read
-
 jobs:
   audit:
     runs-on: ubuntu-latest
