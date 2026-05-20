@@ -24,10 +24,15 @@
     "docs": "npm run build && jsdoc -c jsdoc.json -d docs -t ./node_modules/better-docs",
     "build-sample-project": "cd test-project && npx bsc",
     "test": "npx rooibos --project=./tests/bsconfig.json",
-    "createDataSet": "ts-node ./scripts/createDataSet.ts"
+    "createDataSet": "ts-node ./scripts/createDataSet.ts",
+    "audit": "npm audit"
   },
   "author": "Tyler Smith",
   "license": "MIT",
+  "overrides": {
+    "lodash": "^4.18.1",
+    "serialize-javascript": "^7.0.5"
+  },
   "ropm": {
     "packagePrefix": "sgRouter",
     "packageRootDir": "dist",
@@ -41,7 +46,7 @@
     "dotenv": "^16.4.5",
     "fast-glob": "^3.2.12",
     "fs-extra": "^10.1.0",
-    "lodash": "^4.17.23",
+    "lodash": "^4.18.1",
     "node-fetch": "^2.7.0",
     "rooibos-roku": "^5.15.7",
     "ropm": "^0.11.4",
