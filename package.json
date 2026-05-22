@@ -25,7 +25,7 @@
     "build-sample-project": "cd test-project && npx bsc",
     "test": "npx rooibos --project=./tests/bsconfig.json",
     "createDataSet": "ts-node ./scripts/createDataSet.ts",
-    "audit": "npm audit"
+    "audit": "npm audit || audit-ci --config ./audit-ci.jsonc"
   },
   "author": "Tyler Smith",
   "license": "MIT",
@@ -38,6 +38,7 @@
     "@types/fs-extra": "^9.0.13",
     "@types/lodash": "^4.17.13",
     "@types/node": "^18.7.16",
+    "audit-ci": "^7.1.0",
     "brighterscript": "^0.72.2",
     "dotenv": "^16.4.5",
     "fast-glob": "^3.2.12",
