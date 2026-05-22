@@ -541,6 +541,12 @@ promises.chain(sgRouter.popToCheckpoint("checkout-start"), m)
 
 ---
 
+## Accepted security advisories
+
+Dependencies flagged by `npm audit` that we have reviewed and chosen not to upgrade are tracked in [audit-ci.jsonc](https://github.com/RokuCommunity/sgRouter/blob/master/audit-ci.jsonc). Each entry includes the advisory ID, the date it was added, and the reason it does not apply to this project.
+
+---
+
 ## 📄 License
 
 Licensed under the [MIT License](LICENSE).
