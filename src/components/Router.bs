@@ -424,7 +424,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
                 if hasHash then
                     if NOT rodash.isEqual(newRoute.routeConfig, oldRoute.routeConfig) then reuse = false
                 else
-                    if NOT rodash.isEqual(newRoute.routeParams.component, oldRoute.routeParams.component) then reuse = false
+                    if NOT rodash.isEqual(newRoute.routeConfig.component, oldRoute.routeConfig.component) then reuse = false
                 end if
 
                 if reuse then
