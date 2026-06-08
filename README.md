@@ -455,7 +455,7 @@ sgRouter.setCheckpoint("checkout-start")
 
 - `identifier` is a string. If omitted (or `Invalid`), the current route's path is used as the identifier.
 - A single stack entry can hold multiple identifiers — calling `setCheckpoint` again with a different name on the same view just adds another identifier.
-- No-op when the stack is empty.
+- Returns `false` if the stack is empty.
 
 ```brightscript
 ' Omit the identifier — uses the active route path automatically
