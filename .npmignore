@@ -8,3 +8,4 @@ roku_modules
 *.tgz
 *.json
 *.spec.brs
+*.spec.xml

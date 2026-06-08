@@ -410,6 +410,26 @@ namespace tests
             end function).toPromise()
         end function
 
+        @async()
+        @it("creates a new view when navigating to an allowReuse route with a different component")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", allowReuse: true }
+                { pattern: "/beta", component: "AlternateView", allowReuse: true }
+            ])
+
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                viewTarget = m.outlet.findNode("viewTarget")
+
+                m.assertEqual(viewTarget.getChildCount(), 2)
+                m.assertEqual(viewTarget.getChild(1).subtype(), "AlternateView")
+                m.assertEqual(m.router.routerState.url, "/beta")
+            end function).toPromise()
+        end function
+
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("concurrent navigation")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
