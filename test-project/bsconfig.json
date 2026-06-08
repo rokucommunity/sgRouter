@@ -19,7 +19,8 @@
 			"dest": "components"
 		},
 		//exclude the test files
-		"!../src/**/*.spec.bs"
+		"!../src/**/*.spec.bs",
+		"!../src/**/*.spec.xml"
 	],
 	"plugins": []
 }
