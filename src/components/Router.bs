@@ -14,6 +14,7 @@ sub init()
     m.__router_outlet = Invalid
     m.__router_processingGoBack = false
     m.__router_routes = {}
+    m.__router_viewMap = {}
 
     m.top.focusable = true
 end sub
@@ -57,6 +58,7 @@ sub _destroy(_ = Invalid as Dynamic)
     m.__router_outlet = Invalid
     m.__router_processingGoBack = false
     m.__router_routes = {}
+    m.__router_viewMap = {}
 
     rodash.removeNodeChildren(m.__router_viewTarget)
     rodash.removeNodeChildren(m.__router_keepAliveViewTarget)
@@ -119,26 +121,9 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     previousEntry = m.__router_historyStack[m.__router_historyStack.count() - 2]
     previousNodeId = previousEntry.nodeId
 
-    ' Search viewTarget first, then keepAliveViewTarget
     foundView = findViewByNodeId(previousNodeId)
     viewToOpen = foundView.view
     viewToOpenFromKeepAlive = foundView.fromKeepAlive
-    ' KeepAlive views can have their id reassigned by addViewToStack on subsequent forward navigations.
-    ' If the nodeId is stale, check previousNodeIds on each keepAlive view to find the right node.
-    if viewToOpen = Invalid then
-        for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
-            if rodash.isArray(v.previousNodeIds) then
-                for each prevId in v.previousNodeIds
-                    if prevId = previousNodeId then
-                        viewToOpen = v
-                        viewToOpenFromKeepAlive = true
-                        exit for
-                    end if
-                end for
-            end if
-            if viewToOpen <> Invalid then exit for
-        end for
-    end if
 
     if viewToOpen = Invalid then
         m.__router_processingGoBack = false
@@ -147,6 +132,7 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
 
     if viewToOpenFromKeepAlive then
         viewToOpen.reparent(m.__router_viewTarget, true)
+        m.__router_viewMap[viewToOpen.id] = { view: viewToOpen, fromKeepAlive: false }
     end if
 
     ' An event triggered when a navigation starts.
@@ -274,6 +260,7 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
     ' Reparent target from keepAliveViewTarget to viewTarget if needed
     if targetFromKeepAlive then
         targetView.reparent(m.__router_viewTarget, true)
+        m.__router_viewMap[targetView.id] = { view: targetView, fromKeepAlive: false }
     end if
 
     ' Dispatch NavigationStart
@@ -659,6 +646,7 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
             prevIds.shift()
         end while
         view.previousNodeIds = prevIds
+        m.__router_viewMap.delete(view.id)
         view.id = route.id
         view.route = route
         toResolve = promises.resolve(Invalid)
@@ -687,6 +675,7 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         ' Ensure the view is in the visible stack (and reparent if it was previously suspended)
         m.__router_viewTarget.appendChild(view)
         view.reparent(m.__router_viewTarget, true)
+        m.__router_viewMap[view.id] = { view: view, fromKeepAlive: false }
 
         ' Determine whether the active view is in the closeViews list.
         isActiveInCloseViews = false
@@ -756,8 +745,12 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
                 if rodash.getBoolean(cv.route.routeConfig.keepAlive, "enabled") then
                     hideView(cv, false)
                     cv.reparent(m.__router_keepAliveViewTarget, true)
+                    m.__router_viewMap[cv.id] = { view: cv, fromKeepAlive: true }
                 else
-                    if hideView(cv, false) then rodash.removeNode(cv)
+                    if hideView(cv, false) then
+                        rodash.removeNode(cv)
+                        m.__router_viewMap.delete(cv.id)
+                    end if
                 end if
             end for
         end if
@@ -778,6 +771,7 @@ function closeView(view = Invalid as Dynamic) as Dynamic
     return promises.onThen(view@._beforeViewClose({ route: view.route }), function(_ as Dynamic, internalContext as Dynamic) as Dynamic
         if hideView(internalContext.view, false) then
             rodash.removeNode(internalContext.view)
+            m.__router_viewMap.delete(internalContext.view.id)
         end if
 
         return true
@@ -796,6 +790,7 @@ function suspendView(view = Invalid as Dynamic) as Dynamic
     return promises.onThen(view@._onViewSuspend({ route: view.route }), function(_ as Dynamic, ctx as Dynamic) as Dynamic
         hideView(ctx.view, false)
         ctx.view.reparent(m.__router_keepAliveViewTarget, true)
+        m.__router_viewMap[ctx.view.id] = { view: ctx.view, fromKeepAlive: true }
         return true
     end function, { view: view })
 end function
@@ -919,14 +914,19 @@ sub _applyPopNavigationState(view as Object, fromKeepAlive = false as Boolean)
     })
 end sub
 
-' Searches viewTarget then keepAliveViewTarget for a view with the given node ID.
+' Searches the view map for a view with the given node ID.
+' Falls back to a previousNodeIds scan on keepAlive views when the ID is stale
+' (keepAlive views get a new ID on each reuse via addViewToStack).
 ' Returns { view: node, fromKeepAlive: Boolean } — view is Invalid if not found.
 function findViewByNodeId(nodeId as String) as Object
-    for each v in rodash.getNodeChildren(m.__router_viewTarget)
-        if v.id = nodeId then return { view: v, fromKeepAlive: false }
-    end for
+    entry = m.__router_viewMap[nodeId]
+    if entry <> Invalid then return entry
     for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
-        if v.id = nodeId then return { view: v, fromKeepAlive: true }
+        if rodash.isArray(v.previousNodeIds) then
+            for each prevId in v.previousNodeIds
+                if prevId = nodeId then return { view: v, fromKeepAlive: true }
+            end for
+        end if
     end for
     return { view: Invalid, fromKeepAlive: false }
 end function
