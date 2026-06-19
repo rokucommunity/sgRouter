@@ -46,6 +46,7 @@ namespace tests
                     "component": "View"
                     "clearstackonresolve": false
                     "keepalive": { enabled: false }
+                    "suspendmode": "offscreen"
                     "pattern": "/alpha"
                 },
                 "/beta": {
@@ -54,6 +55,7 @@ namespace tests
                     "component": "View"
                     "clearstackonresolve": false
                     "keepalive": { enabled: false }
+                    "suspendmode": "offscreen"
                     "pattern": "/beta"
                 }
             })
@@ -385,6 +387,74 @@ namespace tests
                 m.assertEqual(m.router.routerState.url, "/alpha")
                 m.assertTrue(m.router.routerState.state.routeConfig.keepAlive.enabled)
             end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("suspendMode")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        @async()
+        @it("defaults to offscreen: hides the suspended view and moves it offscreen")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha is suspended in viewTarget; default suspendMode moves it offscreen
+                suspendedView = m.outlet.findNode("viewTarget").getChild(0)
+                m.assertFalse(suspendedView.visible)
+                m.assertEqual(suspendedView.translation, [10000.0, 10000.0])
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("visible: keeps the suspended view visible and on-screen")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", suspendMode: "visible" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha is suspended in viewTarget but stays visible and at its on-screen position
+                suspendedView = m.outlet.findNode("viewTarget").getChild(0)
+                m.assertTrue(suspendedView.visible)
+                m.assertEqual(suspendedView.translation, [0.0, 0.0])
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("offscreen: keeps a keepAlive view hidden and offscreen while suspended")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", keepAlive: { enabled: true }, suspendMode: "offscreen" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha is suspended into keepAliveViewTarget, hidden and moved offscreen
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                suspendedView = m.outlet.findNode("keepAliveViewTarget").getChild(0)
+                m.assertFalse(suspendedView.visible)
+                m.assertEqual(suspendedView.translation, [10000.0, 10000.0])
+            end function).toPromise()
+        end function
+
+        @it("stores the configured suspendMode on the route config")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", suspendMode: "visible" }
+            ])
+            m.assertEqual(m.router@._getRoutes()["/alpha"].suspendMode, "visible")
         end function
 
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -1014,6 +1084,7 @@ namespace tests
                     "component": "View"
                     "clearstackonresolve": false
                     "keepalive": { enabled: false }
+                    "suspendmode": "offscreen"
                     "pattern": "/alpha"
                 }
                 "/beta": {
@@ -1022,6 +1093,7 @@ namespace tests
                     "component": "View"
                     "clearstackonresolve": false
                     "keepalive": { enabled: false }
+                    "suspendmode": "offscreen"
                     "pattern": "/beta"
                 }
             })

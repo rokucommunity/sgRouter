@@ -12,6 +12,8 @@
         <function name="onViewOpen" />
         <function name="_beforeViewClose" />
         <function name="beforeViewClose" />
+        <function name="_beforeViewSuspend" />
+        <function name="beforeViewSuspend" />
         <function name="_onRouteUpdate" />
         <function name="onRouteUpdate" />
         <function name="_onViewResume" />

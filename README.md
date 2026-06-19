@@ -69,6 +69,7 @@ Views extending `sgRouter_View` can define:
 - `beforeViewOpen` → Called before the view loads (e.g. async setup, API calls)
 - `onViewOpen` → Called after previous view is closed/suspended
 - `beforeViewClose` → Invoked before a view is destroyed
+- `beforeViewSuspend` → Invoked before a view is hidden/suspended (before `onViewSuspend`)
 - `onViewSuspend` / `onViewResume` → Handle stack suspensions/resumptions
 - `onRouteUpdate` → Fired when navigating to the same route with updated params/hash
 - `handleFocus` → Defines focus handling when the view becomes active
@@ -374,7 +375,7 @@ Every view lifecycle receives a **route snapshot** so your screen logic can reac
 
 ### What you get in `params`
 
-`beforeViewOpen`, `onViewOpen`, `beforeViewClose`, `onViewSuspend`, and `onViewResume` all receive a `params` object constructed by the router just before the lifecycle is called, which includes:
+`beforeViewOpen`, `onViewOpen`, `beforeViewClose`, `beforeViewSuspend`, `onViewSuspend`, and `onViewResume` all receive a `params` object constructed by the router just before the lifecycle is called, which includes:
 
 ```text
 params.route.routeConfig          ' the matched route definition
@@ -388,7 +389,7 @@ params.route.navigationState      ' how this navigation was triggered:
   .fromRedirect                   '   true when arrived via a canActivate guard redirect
 ```
 
-The snapshot is sourced from the URL you navigated to (e.g. `"/details/movies/42?page=2&sort=trending#grid=poster"`). The router builds this object and passes it into `beforeViewOpen(params)`, `onViewOpen(params)`, `beforeViewClose(params)`, `onViewSuspend(params)`, and `onViewResume(params)`.
+The snapshot is sourced from the URL you navigated to (e.g. `"/details/movies/42?page=2&sort=trending#grid=poster"`). The router builds this object and passes it into `beforeViewOpen(params)`, `onViewOpen(params)`, `beforeViewClose(params)`, `beforeViewSuspend(params)`, `onViewSuspend(params)`, and `onViewResume(params)`.
 
 `onRouteUpdate` is different — it receives an object with both the old and new route (`params.oldRoute` and `params.newRoute`), so you can diff the two and respond to exactly what changed.
 

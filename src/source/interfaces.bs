@@ -18,6 +18,7 @@ namespace sgRouter
         optional canActivate as Dynamic
         optional clearStackOnResolve as Boolean ' clear the view stack when this route is activated
         optional keepAlive as sgRouter.KeepAliveConfig
+        optional suspendMode as String ' "offscreen" (default) | "hidden" | "visible" - determines how the view is handled when suspended
     end interface
 
     interface KeepAliveConfig

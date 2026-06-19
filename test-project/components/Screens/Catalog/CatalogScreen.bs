@@ -6,6 +6,9 @@ sub init()
   m.label = m.top.findNode("label")
   m.rowList = m.top.findNode("rowList")
   m.rowList.observeField("rowItemSelected", "onItemSelected")
+  m.fadeAnimation = m.top.findNode("fadeAnimation")
+  m.fadeInInterpolator = m.top.findNode("fadeInInterpolator")
+  m.container = m.top.findNode("container")
 end sub
 
 function beforeViewOpen(params = {} as Object) as Dynamic
@@ -52,6 +55,9 @@ function beforeViewOpen(params = {} as Object) as Dynamic
   m.rowList.rowItemSpacing = [20, 20]
   m.rowList.content = rowListContent
 
+  m.fadeAnimation.unobserveField("state")
+  m.fadeInInterpolator.keyValue = [m.container.opacity, 1]
+  m.fadeAnimation.control = "start"
   return promises.resolve(Invalid)
 end function
 
@@ -68,8 +74,30 @@ function onViewResume(params = {} as Object) as Dynamic
   if fromKeepAlive <> Invalid AND fromKeepAlive AND fromPopState <> Invalid AND NOT fromPopState then
     m.rowList.jumpToRowItem = [0, 0]
   end if
+  m.fadeAnimation.unobserveField("state")
+  m.fadeInInterpolator.keyValue = [m.container.opacity, 1]
+  m.fadeAnimation.control = "start"
   return promises.resolve(Invalid)
 end function
+
+function beforeViewSuspend(params = {} as Object) as Dynamic
+  print "BEFORE VIEW SUSPEND", params
+  m.beforeSuspendPromise = promises.create()
+
+  m.fadeInInterpolator.keyValue = [m.container.opacity, 0]
+  m.fadeAnimation.observeField("state", "onFadeAnimationStateChanged")
+  m.fadeAnimation.control = "start"
+  return m.beforeSuspendPromise
+end function
+
+sub onFadeAnimationStateChanged(event as Object)
+  state = event.getData()
+  if state = "stopped" then
+    m.fadeAnimation.unobserveField("state")
+    print "VIEW SUSPEND ANIMATION COMPLETE, RESOLVING SUSPEND PROMISE"
+    promises.resolve(true, m.beforeSuspendPromise)
+  end if
+end sub
 
 function onViewSuspend(params = {} as Object) as Dynamic
   print "VIEW SUSPENDED", params
