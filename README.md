@@ -60,6 +60,7 @@ Each route object can include:
 | `allowReuse` | boolean | ❌ | `false` | When `true`, navigating to the same route calls `onRouteUpdate` instead of creating a new view |
 | `clearStackOnResolve` | boolean | ❌ | `false` | Destroys all previous views in the stack when this route activates |
 | `keepAlive` | object | ❌ | `{ enabled: false }` | When `enabled: true`, the view is suspended (not destroyed) when navigated away from |
+| `suspendMode` | string | ❌ | `"offscreen"` | How the view is hidden while suspended — `"offscreen"` (moved off-screen and hidden), `"hidden"` (hidden in place), `"visible"` (left rendered in place). See [View suspension](#-view-suspension) |
 | `canActivate` | array | ❌ | `[]` | Guards that must allow navigation before the view is shown (see [Route Guards](#-route-guards)) |
 
 ### View Lifecycle Methods
@@ -438,6 +439,75 @@ The route snapshot is assembled by the router by parsing:
 - the **hash** → `hash`
 
 That structured object is then provided to the view lifecycles mentioned above. This keeps your screens URL-driven and easy to test (you can navigate with different URLs and assert behavior based on `params`).
+
+---
+
+## 🌗 View Suspension
+
+When you navigate away from a view, the router **suspends** the outgoing view rather than tearing it down immediately. Two things control this: the `suspendMode` route option (how the view is hidden) and the `beforeViewSuspend` lifecycle hook (a chance to run code before it's hidden).
+
+This applies to **every** outgoing view — both `keepAlive` views (which are retained in `keepAliveViewTarget`) and ordinary views (which stay hidden in the stack for `goBack`). Only views that are actually destroyed (non-`keepAlive` views removed by `clearStackOnResolve`, `popToCheckpoint`, etc.) go through `beforeViewClose` instead.
+
+### `suspendMode`
+
+`suspendMode` decides how a view is hidden once it has been suspended:
+
+| Mode | Behaviour |
+|---|---|
+| `"offscreen"` *(default)* | The view is hidden (`visible = false`) **and** moved off-screen (`translation = [10000, 10000]`). Frees it from the visible composite. |
+| `"hidden"` | The view is hidden (`visible = false`) but **left at its current position** (`translation` unchanged). Use this when you manage your own position-based transition and don't want the router moving the view. |
+| `"visible"` | The view is left **rendered in place** (`visible = true`, position unchanged). Use this when the outgoing view should remain on screen underneath the incoming one — e.g. a transparent overlay, or a cross-fade you drive yourself. |
+
+> Unknown `suspendMode` values fall back to `"offscreen"` (a warning is printed at `addRoutes` time). Values are case-sensitive.
+
+```brightscript
+sgRouter.addRoutes([
+    { pattern: "/shows", component: "CatalogScreen", suspendMode: "visible" },
+    { pattern: "/movies", component: "CatalogScreen", keepAlive: { enabled: true } } ' defaults to "offscreen"
+])
+```
+
+### `beforeViewSuspend`
+
+`beforeViewSuspend(params)` fires on the **outgoing** view while it is still visible, before it is hidden. Like `beforeViewOpen`, it can return a promise — the router **waits** for that promise to resolve before hiding the view and showing the next screen.
+
+The lifecycle ordering is guaranteed to be:
+
+```text
+beforeViewOpen(next)      ' the incoming view prepares (data load, etc.)
+  → beforeViewSuspend(prev)   ' awaited — outgoing view is still visible here
+  → (prev is hidden per suspendMode)
+  → onViewSuspend(prev)
+  → onViewOpen(next)          ' incoming view is now shown
+```
+
+Because it runs **after** the next view's `beforeViewOpen` and **blocks** until your promise resolves, the hook only proceeds once the next screen is ready. It receives the same [route snapshot](#-route-snapshot-in-lifecycle-hooks) `params` as the other lifecycle hooks.
+
+What you do in the hook is up to you — flush analytics, persist scroll position, release resources, and so on. As one example, because the outgoing view is still visible and the router awaits your promise, you could play a fade-out and resolve only when it finishes:
+
+```brightscript
+' --- CatalogScreen.bs ---
+function beforeViewSuspend(params = {} as object) as dynamic
+    ' Create a deferred and return it; resolve it when the fade-out completes.
+    m.suspendPromise = promises.create()
+
+    m.fadeOutInterpolator.keyValue = [m.container.opacity, 0]
+    m.fadeAnimation.observeField("state", "onFadeAnimationStateChanged")
+    m.fadeAnimation.control = "start"
+
+    return m.suspendPromise
+end function
+
+sub onFadeAnimationStateChanged(event as object)
+    if event.getData() = "stopped" then
+        m.fadeAnimation.unobserveField("state")
+        ' Resolve the deferred — pass the promise as the SECOND argument
+        promises.resolve(true, m.suspendPromise)
+    end if
+end sub
+```
+
+> ⚠️ If you return a promise, make sure it always resolves. Because the router awaits `beforeViewSuspend`, a promise that never resolves will stall navigation — guard any observers so it resolves even if the work is interrupted.
 
 ---
 

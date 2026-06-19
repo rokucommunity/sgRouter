@@ -78,6 +78,14 @@ sub _addRoutes(routes = [] as Object)
             keepAlive: { enabled: false }
             suspendMode: "offscreen"
         }, route)
+
+        ' Validate suspendMode; fall back to the default for unknown values.
+        suspendMode = rodash.getString(merged, "suspendMode")
+        if suspendMode <> "offscreen" AND suspendMode <> "hidden" AND suspendMode <> "visible" then
+            print "[WARN] sgRouter: unknown suspendMode """ + suspendMode + """ for route """ + rodash.getString(merged, "pattern") + """ — falling back to ""offscreen"""
+            merged.suspendMode = "offscreen"
+        end if
+
         m.__router_routes[route.pattern] = merged
 
         if rodash.isNonEmptyString(merged.name) then
@@ -820,12 +828,17 @@ end function
 
 ' Hides a view according to its route's suspendMode. Pure visibility toggle: the suspend
 ' lifecycle hooks (_beforeViewSuspend / _onViewSuspend) are owned by suspendView.
+' suspendMode:
+'   "visible"   - left rendered in place (visible, position unchanged)
+'   "offscreen" - hidden and moved off-screen (default)
+'   "hidden"    - hidden in place (not rendered, position unchanged)
 ' @param {Object} view - The view to hide
 function hideView(view as Object) as Boolean
     success = rodash.isNode(view)
     if success then
-        view.visible = view.route.routeConfig.suspendMode = "visible"
-        if view.route.routeConfig.suspendMode = "offscreen" then
+        suspendMode = view.route.routeConfig.suspendMode
+        view.visible = suspendMode = "visible"
+        if suspendMode = "offscreen" then
             view.translation = [10000, 10000]
         end if
     end if
