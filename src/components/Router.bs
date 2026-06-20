@@ -84,6 +84,10 @@ sub _addRoutes(routes = [] as Object)
         if suspendMode <> "offscreen" AND suspendMode <> "hidden" AND suspendMode <> "visible" then
             print "[WARN] sgRouter: unknown suspendMode """ + suspendMode + """ for route """ + rodash.getString(merged, "pattern") + """ — falling back to ""offscreen"""
             merged.suspendMode = "offscreen"
+        else if suspendMode = "visible" AND rodash.getBoolean(merged.keepAlive, "enabled") then
+            ' keepAlive views are moved to the background keepAliveViewTarget while suspended,
+            ' where "visible" has no effect (they are always hidden). Warn rather than coerce.
+            print "[WARN] sgRouter: suspendMode ""visible"" has no effect on keepAlive route """ + rodash.getString(merged, "pattern") + """ — keepAlive views are hidden while suspended"
         end if
 
         m.__router_routes[route.pattern] = merged
@@ -769,13 +773,12 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         return showView(internalContext.view, internalContext.fromKeepAlive)
     end function).then(function(response as Dynamic, internalContext as Dynamic) as Dynamic
         ' Remove/suspend views after the new view is visible.
-        ' keepAlive: reparent synchronously (_onViewSuspend already called above).
+        ' keepAlive: move into the background keepAliveViewTarget (_onViewSuspend already called above).
         ' non-keepAlive: destroy.
         if rodash.isNonEmptyArray(internalContext.closeViews) then
             for each cv in internalContext.closeViews
                 if rodash.getBoolean(cv.route.routeConfig.keepAlive, "enabled") then
-                    hideView(cv)
-                    cv.reparent(m.__router_keepAliveViewTarget, true)
+                    moveViewToKeepAlive(cv)
                 else
                     if hideView(cv) then rodash.removeNode(cv)
                 end if
@@ -809,8 +812,8 @@ end function
 ' Runs the suspend lifecycle for a view: _beforeViewSuspend (view still visible, e.g. exit
 ' animation) -> hide -> _onViewSuspend. The returned promise resolves only after the view's
 ' own _beforeViewSuspend promise resolves, so callers can await it before showing the next view.
-' keepAlive views are reparented into keepAliveViewTarget; non-keepAlive views remain in
-' viewTarget (hidden) so they are available for goBack.
+' keepAlive views are moved into keepAliveViewTarget; non-keepAlive views remain in
+' viewTarget (hidden per suspendMode) so they are available for goBack.
 ' @param {Dynamic} view - The view to suspend
 ' @returns {Dynamic} - A promise that resolves once the suspend lifecycle has completed
 function suspendView(view = Invalid as Dynamic) as Dynamic
@@ -821,12 +824,25 @@ function suspendView(view = Invalid as Dynamic) as Dynamic
 
         return promises.onThen(ctx.view@._onViewSuspend({ route: ctx.view.route }), function(_ as Dynamic, suspendCtx as Dynamic) as Dynamic
             if rodash.getBoolean(suspendCtx.view.route.routeConfig.keepAlive, "enabled") then
-                suspendCtx.view.reparent(m.__router_keepAliveViewTarget, true)
+                moveViewToKeepAlive(suspendCtx.view)
             end if
             return true
         end function, { view: ctx.view })
     end function, { view: view })
 end function
+
+' Moves a suspended keepAlive view into the background keepAliveViewTarget. Background views
+' are always hidden and parked off-screen regardless of suspendMode: keepAliveViewTarget renders
+' behind viewTarget, so a "visible" view here would bleed through behind the active view.
+' suspendMode only governs in-place (viewTarget) suspension; showView restores visibility on resume.
+' @param {Object} view - The keepAlive view to move into the background
+sub moveViewToKeepAlive(view as Object)
+    if rodash.isNode(view) then
+        view.visible = false
+        view.translation = [10000, 10000]
+        view.reparent(m.__router_keepAliveViewTarget, true)
+    end if
+end sub
 
 ' Closes or suspends a view depending on whether its route has keepAlive enabled.
 function closeOrSuspendView(view as Object) as Dynamic

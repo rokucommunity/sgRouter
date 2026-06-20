@@ -449,6 +449,26 @@ namespace tests
         end function
 
         @async()
+        @it("visible is ignored for keepAlive: a suspended keepAlive view is hidden in the background, not left rendered")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", keepAlive: { enabled: true }, suspendMode: "visible" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' Despite suspendMode "visible", a keepAlive view moved to keepAliveViewTarget
+                ' (which renders behind viewTarget) must be hidden so it doesn't bleed through.
+                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                suspendedView = m.outlet.findNode("keepAliveViewTarget").getChild(0)
+                m.assertFalse(suspendedView.visible)
+                m.assertEqual(suspendedView.translation, [10000.0, 10000.0])
+            end function).toPromise()
+        end function
+
+        @async()
         @it("hidden: hides the suspended view in place without moving it off-screen")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })

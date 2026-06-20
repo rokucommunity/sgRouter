@@ -458,6 +458,8 @@ This applies to **every** outgoing view — both `keepAlive` views (which are re
 | `"hidden"` | The view is hidden (`visible = false`) but **left at its current position** (`translation` unchanged). Use this when you manage your own position-based transition and don't want the router moving the view. |
 | `"visible"` | The view is left **rendered in place** (`visible = true`, position unchanged). Use this when the outgoing view should remain on screen underneath the incoming one — e.g. a transparent overlay, or a cross-fade you drive yourself. |
 
+> `suspendMode` governs **in-place** suspension — views that stay in the active stack (`viewTarget`). A `keepAlive` view is instead moved into the background `keepAliveViewTarget`, where it is **always hidden** (it would otherwise render behind every active view), so `suspendMode: "visible"` has no effect on `keepAlive` routes and logs a warning. Visibility is restored on resume.
+
 > Unknown `suspendMode` values fall back to `"offscreen"` (a warning is printed at `addRoutes` time). Values are case-sensitive.
 
 ```brightscript
