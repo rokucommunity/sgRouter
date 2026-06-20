@@ -712,21 +712,28 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         promisesToResolve = []
 
         ' Handle the active view:
-        ' - in closeViews: just hide; lifecycle is handled by the closeViews loop below
+        ' - in closeViews: its lifecycle is owned by the closeViews loop below. A keepAlive view
+        '   is suspended there (beforeViewSuspend -> hide -> onViewSuspend), keeping the hide
+        '   ordered after beforeViewSuspend; a non-keepAlive view is being destroyed, so hide it
+        '   now (consistent with closeView) — beforeViewClose runs in the loop.
         ' - otherwise: run the suspend lifecycle (awaited so the new view is not shown until
         '   the old view's _beforeViewSuspend resolves). keepAlive views move to
         '   keepAliveViewTarget; non-keepAlive views stay hidden in viewTarget for goBack.
         if m.__router_activeView <> Invalid then
             if isActiveInCloseViews then
-                hideView(m.__router_activeView)
+                if NOT rodash.getBoolean(m.__router_activeView.route.routeConfig.keepAlive, "enabled") then
+                    hideView(m.__router_activeView)
+                end if
             else
                 promisesToResolve.push(suspendView(m.__router_activeView))
             end if
         end if
 
         ' Close or suspend views in closeViews.
-        ' For keepAlive views: only call _onViewSuspend if this view IS the active view (first suspension).
-        ' Non-active keepAlive views are already in keepAliveViewTarget from prior forward navigation.
+        ' For keepAlive views: only run the suspend lifecycle if this view IS the active view
+        ' (first suspension). Non-active keepAlive views are already suspended in keepAliveViewTarget
+        ' from prior forward navigation. The hide runs after _beforeViewSuspend so an exit transition
+        ' sees the view while it is still visible (matching the suspendView path).
         if rodash.isNonEmptyArray(internalContext.closeViews) then
             for each cv in internalContext.closeViews
                 params = { route: cv.route }
@@ -734,6 +741,7 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
                 if rodash.getBoolean(cv.route.routeConfig.keepAlive, "enabled") then
                     if m.__router_activeView <> Invalid AND cv.id = m.__router_activeView.id then
                         promisesToResolve.push(promises.onThen(cv@._beforeViewSuspend(params), function(_ as Dynamic, ctx as Dynamic) as Dynamic
+                            hideView(ctx.view)
                             return ctx.view@._onViewSuspend({ route: ctx.view.route })
                         end function, { view: cv }))
                     end if
@@ -830,15 +838,18 @@ end function
 ' lifecycle hooks (_beforeViewSuspend / _onViewSuspend) are owned by suspendView.
 ' suspendMode:
 '   "visible"   - left rendered in place (visible, position unchanged)
-'   "offscreen" - hidden and moved off-screen (default)
 '   "hidden"    - hidden in place (not rendered, position unchanged)
+'   "offscreen" - hidden and moved off-screen (default; also the fallback for any
+'                 unrecognized or missing value, so the view is never left on-screen)
 ' @param {Object} view - The view to hide
 function hideView(view as Object) as Boolean
     success = rodash.isNode(view)
     if success then
         suspendMode = view.route.routeConfig.suspendMode
         view.visible = suspendMode = "visible"
-        if suspendMode = "offscreen" then
+        ' Move off-screen for "offscreen" and for anything that isn't explicitly
+        ' "visible" or "hidden" — unknown/Invalid values default to offscreen.
+        if suspendMode <> "visible" AND suspendMode <> "hidden" then
             view.translation = [10000, 10000]
         end if
     end if

@@ -485,6 +485,49 @@ namespace tests
         end function
 
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("beforeViewSuspend ordering")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        ' RecordingView records each suspend hook + its visibility onto the view node's
+        ' `suspendTrace` field. beforeViewSuspend must fire while the view is still visible
+        ' (before the hide); onViewSuspend must fire after the hide (visible=false for the
+        ' default offscreen mode). The suspended keepAlive view ends up in keepAliveViewTarget.
+
+        @async()
+        @it("suspendView path: beforeViewSuspend fires while visible, before onViewSuspend")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "RecordingView", keepAlive: { enabled: true } }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                ' /alpha is the active keepAlive view and NOT in closeViews → suspendView path
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                suspendedView = m.outlet.findNode("keepAliveViewTarget").getChild(0)
+                m.assertEqual(suspendedView.suspendTrace, "beforeViewSuspend:true,onViewSuspend:false")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("clearStackOnResolve path: beforeViewSuspend fires while visible, before onViewSuspend")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "RecordingView", keepAlive: { enabled: true } }
+                { pattern: "/root", component: "View", clearStackOnResolve: true }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                ' /alpha is the active keepAlive view AND in closeViews → closeViews-loop suspend path
+                return sgRouter.navigateTo("/root", { router: m.router })
+            end function).then(function(_, m)
+                suspendedView = m.outlet.findNode("keepAliveViewTarget").getChild(0)
+                m.assertEqual(suspendedView.suspendTrace, "beforeViewSuspend:true,onViewSuspend:false")
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("allowReuse")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
