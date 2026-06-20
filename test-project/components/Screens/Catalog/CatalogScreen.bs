@@ -82,8 +82,12 @@ end function
 
 function beforeViewSuspend(params = {} as Object) as Dynamic
   print "BEFORE VIEW SUSPEND", params
-  m.beforeSuspendPromise = promises.create()
 
+  ' Resolve any prior pending suspend promise first so it can never dangle if a new
+  ' navigation interrupts an in-flight fade-out (the router awaits this promise).
+  resolveSuspendPromise()
+
+  m.beforeSuspendPromise = promises.create()
   m.fadeInInterpolator.keyValue = [m.container.opacity, 0]
   m.fadeAnimation.observeField("state", "onFadeAnimationStateChanged")
   m.fadeAnimation.control = "start"
@@ -91,11 +95,20 @@ function beforeViewSuspend(params = {} as Object) as Dynamic
 end function
 
 sub onFadeAnimationStateChanged(event as Object)
-  state = event.getData()
-  if state = "stopped" then
-    m.fadeAnimation.unobserveField("state")
+  if event.getData() = "stopped" then
     print "VIEW SUSPEND ANIMATION COMPLETE, RESOLVING SUSPEND PROMISE"
-    promises.resolve(true, m.beforeSuspendPromise)
+    resolveSuspendPromise()
+  end if
+end sub
+
+' Resolves the pending suspend promise exactly once and stops observing the animation.
+' Idempotent: safe to call from the animation observer, on re-entry, or on teardown.
+sub resolveSuspendPromise()
+  m.fadeAnimation.unobserveField("state")
+  if m.beforeSuspendPromise <> Invalid then
+    promise = m.beforeSuspendPromise
+    m.beforeSuspendPromise = Invalid
+    promises.resolve(true, promise)
   end if
 end sub
 

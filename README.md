@@ -488,26 +488,36 @@ What you do in the hook is up to you — flush analytics, persist scroll positio
 ```brightscript
 ' --- CatalogScreen.bs ---
 function beforeViewSuspend(params = {} as object) as dynamic
+    ' Resolve any prior pending promise first so it can never dangle if a new
+    ' navigation interrupts an in-flight fade-out.
+    resolveSuspendPromise()
+
     ' Create a deferred and return it; resolve it when the fade-out completes.
     m.suspendPromise = promises.create()
-
     m.fadeOutInterpolator.keyValue = [m.container.opacity, 0]
     m.fadeAnimation.observeField("state", "onFadeAnimationStateChanged")
     m.fadeAnimation.control = "start"
-
     return m.suspendPromise
 end function
 
 sub onFadeAnimationStateChanged(event as object)
-    if event.getData() = "stopped" then
-        m.fadeAnimation.unobserveField("state")
+    if event.getData() = "stopped" then resolveSuspendPromise()
+end sub
+
+' Resolves the pending promise exactly once and stops observing — idempotent, so
+' it's safe to call from the observer, on re-entry, or on teardown.
+sub resolveSuspendPromise()
+    m.fadeAnimation.unobserveField("state")
+    if m.suspendPromise <> invalid then
+        promise = m.suspendPromise
+        m.suspendPromise = invalid
         ' Resolve the deferred — pass the promise as the SECOND argument
-        promises.resolve(true, m.suspendPromise)
+        promises.resolve(true, promise)
     end if
 end sub
 ```
 
-> ⚠️ If you return a promise, make sure it always resolves. Because the router awaits `beforeViewSuspend`, a promise that never resolves will stall navigation — guard any observers so it resolves even if the work is interrupted.
+> ⚠️ If you return a promise, make sure it always resolves. Because the router awaits `beforeViewSuspend`, a promise that never resolves will stall navigation. Routing every resolution through a single idempotent helper (as above) guarantees a pending promise is always settled — even if a fade is interrupted by a re-entrant navigation.
 
 ---
 
