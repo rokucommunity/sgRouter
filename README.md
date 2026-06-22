@@ -60,7 +60,7 @@ Each route object can include:
 | `allowReuse` | boolean | ❌ | `false` | When `true`, navigating to the same route calls `onRouteUpdate` instead of creating a new view |
 | `clearStackOnResolve` | boolean | ❌ | `false` | Destroys all previous views in the stack when this route activates |
 | `keepAlive` | object | ❌ | `{ enabled: false }` | When `enabled: true`, the view is suspended (not destroyed) when navigated away from |
-| `suspendMode` | string | ❌ | `"offscreen"` | How the view is hidden while suspended — `"offscreen"` (moved off-screen and hidden), `"hidden"` (hidden in place), `"visible"` (left rendered in place). See [View suspension](#-view-suspension) |
+| `suspendMode` | string | ❌ | `"detach"` for `keepAlive`, else `"hide"` | How the view is held while suspended — `"detach"` (removed from the tree and held in a store, re-attached on resume), `"hide"` (kept in the tree, hidden and moved off-screen), `"show"` (kept in the tree, rendered in place). See [View suspension](#-view-suspension) |
 | `canActivate` | array | ❌ | `[]` | Guards that must allow navigation before the view is shown (see [Route Guards](#-route-guards)) |
 
 ### View Lifecycle Methods
@@ -446,26 +446,26 @@ That structured object is then provided to the view lifecycles mentioned above. 
 
 When you navigate away from a view, the router **suspends** the outgoing view rather than tearing it down immediately. Two things control this: the `suspendMode` route option (how the view is hidden) and the `beforeViewSuspend` lifecycle hook (a chance to run code before it's hidden).
 
-This applies to **every** outgoing view — both `keepAlive` views (which are retained in `keepAliveViewTarget`) and ordinary views (which stay hidden in the stack for `goBack`). Only views that are actually destroyed (non-`keepAlive` views removed by `clearStackOnResolve`, `popToCheckpoint`, etc.) go through `beforeViewClose` instead.
+This applies to **every** outgoing view — both `keepAlive` views (which are retained for later resumption) and ordinary views (which stay around in the stack for `goBack`). Only views that are actually destroyed (non-`keepAlive` views removed by `clearStackOnResolve`, `popToCheckpoint`, etc.) go through `beforeViewClose` instead.
 
 ### `suspendMode`
 
-`suspendMode` decides how a view is hidden once it has been suspended:
+`suspendMode` decides how a view is held once it has been suspended:
 
 | Mode | Behaviour |
 |---|---|
-| `"offscreen"` *(default)* | The view is hidden (`visible = false`) **and** moved off-screen (`translation = [10000, 10000]`). Frees it from the visible composite. |
-| `"hidden"` | The view is hidden (`visible = false`) but **left at its current position** (`translation` unchanged). Use this when you manage your own position-based transition and don't want the router moving the view. |
-| `"visible"` | The view is left **rendered in place** (`visible = true`, position unchanged). Use this when the outgoing view should remain on screen underneath the incoming one — e.g. a transparent overlay, or a cross-fade you drive yourself. |
+| `"detach"` | The view is **removed from the SceneGraph tree** entirely and held in an internal store, then re-attached when it is resumed. Frees its render/texture cost completely while suspended. This is the default for `keepAlive` routes. |
+| `"hide"` | The view is kept in the tree but hidden (`visible = false`) **and** moved off-screen (`translation = [10000, 10000]`). This is the default for ordinary (non-`keepAlive`) routes. |
+| `"show"` | The view is left **rendered in place** (`visible = true`, position unchanged). Use this when the outgoing view should remain on screen underneath the incoming one — e.g. a transparent overlay, or a cross-fade you drive yourself. |
 
-> `suspendMode` governs **in-place** suspension — views that stay in the active stack (`viewTarget`). A `keepAlive` view is instead moved into the background `keepAliveViewTarget`, where it is **always hidden** (it would otherwise render behind every active view), so `suspendMode: "visible"` has no effect on `keepAlive` routes and logs a warning. Visibility is restored on resume.
+> The default is keepAlive-aware: a `keepAlive` route defaults to `"detach"` (it is retained across stack clears, so it pays to free its render cost while suspended), while an ordinary route defaults to `"hide"`. Visibility — and tree membership, for `"detach"` — is restored on resume.
 
-> Unknown `suspendMode` values fall back to `"offscreen"` (a warning is printed at `addRoutes` time). Values are case-sensitive.
+> Unknown `suspendMode` values fall back to the default for that route (a warning is printed at `addRoutes` time). Values are case-sensitive.
 
 ```brightscript
 sgRouter.addRoutes([
-    { pattern: "/shows", component: "CatalogScreen", suspendMode: "visible" },
-    { pattern: "/movies", component: "CatalogScreen", keepAlive: { enabled: true } } ' defaults to "offscreen"
+    { pattern: "/shows", component: "CatalogScreen", suspendMode: "show" },
+    { pattern: "/movies", component: "CatalogScreen", keepAlive: { enabled: true } } ' defaults to "detach"
 ])
 ```
 
@@ -585,9 +585,9 @@ end function
 
 ### Stack behaviour
 
-- **Views above the target** — removed from the active navigation stack. Non-`keepAlive` views are closed and destroyed; `keepAlive` views that were already suspended remain suspended in `keepAliveViewTarget` (the checkpoint operation does not affect their suspended state).
-- **The target view** — if it was suspended in `keepAliveViewTarget` it is restored to `viewTarget`; `onViewResume` fires as normal.
-- **History stack** — truncated to `[0..targetIndex]` for navigation purposes. A `goBack` immediately after `popToCheckpoint` sees only the entries up to and including the target, even though suspended `keepAlive` views above the target are still retained in `keepAliveViewTarget`.
+- **Views above the target** — removed from the active navigation stack. Non-`keepAlive` views are closed and destroyed; `keepAlive` views that were already suspended remain suspended (the checkpoint operation does not affect their suspended state).
+- **The target view** — if it was suspended it is restored to `viewTarget` (re-attached, if it was detached); `onViewResume` fires as normal.
+- **History stack** — truncated to `[0..targetIndex]` for navigation purposes. A `goBack` immediately after `popToCheckpoint` sees only the entries up to and including the target, even though suspended `keepAlive` views above the target are still retained.
 
 ```brightscript
 ' Stack: /home [checkpoint="shop"] → /details/42 → /cart → /checkout

@@ -38,7 +38,7 @@ sub init()
     ' add the routes to the router
     sgRouter.addRoutes([
         { pattern: "/", component: "WelcomeScreen", clearStackOnResolve: true },
-        { pattern: "/shows", component: "CatalogScreen", clearStackOnResolve: true, canActivate: [m.global.AuthManager], suspendMode: "visible" },
+        { pattern: "/shows", component: "CatalogScreen", clearStackOnResolve: true, canActivate: [m.global.AuthManager], suspendMode: "show" },
         { pattern: "/movies", component: "CatalogScreen", clearStackOnResolve: true, keepAlive: { enabled: true }, canActivate: [{
                 keyPath: "AuthManager.isLoggedIn",
                 scope: "global",

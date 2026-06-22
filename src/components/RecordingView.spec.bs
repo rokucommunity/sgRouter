@@ -3,7 +3,7 @@ import "pkg:/source/roku_modules/promises/promises.brs"
 ' Test-only view that records the order of its suspend hooks together with whether
 ' the view was still visible when each fired. Recorded onto the node's own `suspendTrace`
 ' field (shared across scopes, unlike GetGlobalAA) so the test can read it back from the
-' view node after navigation. Expected trace for an offscreen/keepAlive suspend:
+' view node after navigation. Expected trace for a suspend (hide/detach/keepAlive):
 '   "beforeViewSuspend:true,onViewSuspend:false"
 ' i.e. _beforeViewSuspend runs while still visible (before the hide) and _onViewSuspend after.
 sub appendSuspendTrace(hookName as String)
