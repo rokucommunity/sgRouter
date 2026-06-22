@@ -639,6 +639,123 @@ namespace tests
         end function
 
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("outgoingRouteConfigOverrides")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        ' The incoming route can override the OUTGOING/suspending view's config (e.g. suspendMode)
+        ' for a single navigation — via a route config key, a navigateTo option, or the value
+        ' resolved from the incoming view's beforeViewOpen hook. /alpha defaults to "hide" (stays in
+        ' viewTarget); a "detach" override moves it into the detach store instead.
+
+        @async()
+        @it("route config outgoingRouteConfigOverrides detaches the outgoing view for that navigation")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", outgoingRouteConfigOverrides: { suspendMode: "detach" } }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha would normally "hide" (stay in viewTarget); the override forced it to detach
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+                m.assertNotInvalid(m.detachedViewByPath("/alpha"))
+                ' the shared, registered config for /alpha is untouched
+                m.assertEqual(m.router@._getRoutes()["/alpha"].suspendMode, "hide")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("beforeViewOpen-resolved outgoingRouteConfigOverrides detaches the outgoing view")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "OverridingView" } ' beforeViewOpen resolves { outgoingRouteConfigOverrides: { suspendMode: "detach" } }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+                m.assertNotInvalid(m.detachedViewByPath("/alpha"))
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("outgoingRouteConfigOverrides navigateTo option detaches the outgoing view")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router, outgoingRouteConfigOverrides: { suspendMode: "detach" } })
+            end function).then(function(_, m)
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+                m.assertNotInvalid(m.detachedViewByPath("/alpha"))
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("the outgoing override is reverted after the suspend and does not mutate the view's route config")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", outgoingRouteConfigOverrides: { suspendMode: "detach" } }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' The override took effect (/alpha detached)...
+                detachedAlpha = m.detachedViewByPath("/alpha")
+                m.assertNotInvalid(detachedAlpha)
+                ' ...but it was reverted afterwards, so the view's own route config is back to "hide"
+                m.assertEqual(detachedAlpha.route.routeConfig.suspendMode, "hide")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("an invalid suspendMode override value is dropped; the outgoing view keeps its own mode")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", suspendMode: "detach" } ' own mode: detach
+                { pattern: "/beta", component: "View", outgoingRouteConfigOverrides: { suspendMode: "bogus" } }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' "bogus" is dropped, so no override applies and /alpha falls back to its OWN
+                ' "detach" mode (it is detached). Had the invalid value been applied it would not
+                ' have detached — so the detach proves the bad value was rejected.
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+                m.assertNotInvalid(m.detachedViewByPath("/alpha"))
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("an unsupported override key (keepAlive) is dropped; the outgoing view is not retained")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" } ' non-keepAlive
+                { pattern: "/root", component: "View", clearStackOnResolve: true, outgoingRouteConfigOverrides: { keepAlive: { enabled: true } } }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/root", { router: m.router })
+            end function).then(function(_, m)
+                ' If the keepAlive override were honored, /alpha would be retained in the detach
+                ' store across the stack clear. Because it is dropped, /alpha stays non-keepAlive and
+                ' is destroyed — nothing is retained.
+                m.assertEqual(m.router@._getDetachedViews().count(), 0)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("beforeViewSuspend ordering")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

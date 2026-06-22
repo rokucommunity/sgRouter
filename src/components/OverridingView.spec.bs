@@ -1,0 +1,10 @@
+import "pkg:/source/roku_modules/promises/promises.brs"
+
+' Test-only view whose beforeViewOpen resolves with an outgoingRouteConfigOverrides payload, exercising
+' the dynamic path where the incoming view overrides the outgoing/suspending view's config (e.g.
+' suspendMode) for a single navigation.
+function beforeViewOpen(params = {} as Object) as Dynamic
+    return promises.resolve({
+        outgoingRouteConfigOverrides: { suspendMode: "detach" }
+    })
+end function

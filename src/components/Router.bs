@@ -530,7 +530,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
                 fromPushState: true
             })
 
-            return addViewToStack(newRoute, viewsToRemoveOnResolve)
+            return addViewToStack(newRoute, viewsToRemoveOnResolve, internalContext.outgoingRouteConfigOverrides)
         end if
 
         message = { message: `Route "${newRoute.path}" not found` }
@@ -684,7 +684,7 @@ end function
 ' @param {Dynamic} route - The route to add to the view stack
 ' @param {Array} closeViews - The views to close/suspend
 ' @returns {Dynamic} - The result of the view stack management
-function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
+function addViewToStack(route as Dynamic, closeViews = [] as Object, outgoingRouteConfigOverrides = {} as Object) as Dynamic
     ' An event triggered at the start of the Resolve phase of routing.
     dispatchRouterState(RouterState.ResolveStart, {
         id: route.id
@@ -740,12 +740,46 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         toResolve = view@._beforeViewOpen({ route: route })
     end if
 
-    return promises.chain(toResolve, { view: view, closeViews: closeViews, fromKeepAlive: keepAliveView <> Invalid }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
+    ' Combine navigation-level outgoing-route overrides (applied to the outgoing/suspending view
+    ' for this navigation only): the incoming route config's outgoingRouteConfigOverrides first, then any
+    ' per-navigation override passed via navigateTo options. The incoming view's beforeViewOpen
+    ' resolution (handled in the chain below) takes precedence over both.
+    navOutgoingOverrides = {}
+    if rodash.isNonEmptyAA(route.routeConfig.outgoingRouteConfigOverrides) then
+        navOutgoingOverrides = rodash.merge(navOutgoingOverrides, route.routeConfig.outgoingRouteConfigOverrides)
+    end if
+    if rodash.isNonEmptyAA(outgoingRouteConfigOverrides) then
+        navOutgoingOverrides = rodash.merge(navOutgoingOverrides, outgoingRouteConfigOverrides)
+    end if
+
+    ' Snapshot the outgoing view's route config so the per-navigation override applied below can be
+    ' reverted once the suspend completes — the override is for this navigation only and must not
+    ' persist on a view that is later resumed (e.g. via goBack).
+    outgoingView = m.__router_activeView
+    originalOutgoingConfig = Invalid
+    if rodash.isNode(outgoingView) then originalOutgoingConfig = rodash.clone(outgoingView.route.routeConfig)
+
+    return promises.chain(toResolve, { view: view, closeViews: closeViews, fromKeepAlive: keepAliveView <> Invalid, navOutgoingOverrides: navOutgoingOverrides, outgoingView: outgoingView, originalOutgoingConfig: originalOutgoingConfig }).then(function(beforeOpenResult as Dynamic, internalContext as Dynamic) as Dynamic
         view = internalContext.view
 
         ' Ensure the view is in the visible stack (and reparent if it was previously suspended)
         m.__router_viewTarget.appendChild(view)
         view.reparent(m.__router_viewTarget, true)
+
+        ' Apply outgoing-route overrides to the outgoing (currently active) view for THIS
+        ' navigation only — e.g. so the incoming route can force the outgoing view to suspend with
+        ' a different suspendMode. The incoming view's beforeViewOpen resolution wins over the
+        ' navigation-level overrides. This mutates only the per-navigation outgoing route node (not
+        ' the shared route config registered via addRoutes) and is reverted once the suspend ends.
+        outgoingOverrides = internalContext.navOutgoingOverrides
+        if rodash.isAA(beforeOpenResult) AND rodash.isNonEmptyAA(beforeOpenResult.outgoingRouteConfigOverrides) then
+            outgoingOverrides = rodash.merge(outgoingOverrides, beforeOpenResult.outgoingRouteConfigOverrides)
+        end if
+        ' Restrict overrides to the supported surface (suspendMode only) before applying.
+        outgoingOverrides = sanitizeOutgoingRouteConfigOverrides(outgoingOverrides)
+        if rodash.isNonEmptyAA(outgoingOverrides) AND rodash.isNode(internalContext.outgoingView) then
+            applyOutgoingRouteConfigOverrides(internalContext.outgoingView, outgoingOverrides)
+        end if
 
         ' Determine whether the active view is in the closeViews list.
         isActiveInCloseViews = false
@@ -834,6 +868,13 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
             end for
         end if
 
+        ' Revert the per-navigation outgoing-route override now that the suspend (which reads the
+        ' overridden suspendMode/keepAlive) has completed, so it does not leak onto a retained view's
+        ' route config beyond this navigation. A no-op when no override was applied.
+        if rodash.isNode(internalContext.outgoingView) AND rodash.isAA(internalContext.originalOutgoingConfig) then
+            internalContext.outgoingView.route.routeConfig = internalContext.originalOutgoingConfig
+        end if
+
         return response
     end function).catch(function(error as Dynamic) as Dynamic
         return promises.reject(error)
@@ -910,6 +951,45 @@ sub reattachView(view as Object)
         m.__router_detachedViews.delete(view.id)
         m.__router_viewTarget.appendChild(view)
         view.reparent(m.__router_viewTarget, true)
+    end if
+end sub
+
+' Restricts the fields an incoming route may override on the outgoing/suspending view. Only
+' suspendMode is supported today — keeping the surface small avoids overriding fields that are
+' unsafe to change on a view that is already mounted and suspending (e.g. keepAlive, canActivate).
+' Returns a new AA containing only supported, valid entries; unsupported keys and invalid values
+' are dropped with a warning.
+' @param {Object} overrides - The raw, merged outgoing-route overrides for this navigation
+' @returns {Object} - The sanitized overrides safe to apply
+function sanitizeOutgoingRouteConfigOverrides(overrides as Object) as Object
+    sanitized = {}
+    if NOT rodash.isAA(overrides) then return sanitized
+
+    for each key in overrides
+        if key = "suspendMode" then
+            value = overrides[key]
+            if value = "detach" OR value = "hide" OR value = "show" then
+                sanitized.suspendMode = value
+            else
+                print "[WARN] sgRouter: ignoring invalid outgoingRouteConfigOverrides.suspendMode — expected ""detach"", ""hide"" or ""show"""
+            end if
+        else
+            print "[WARN] sgRouter: ignoring unsupported outgoingRouteConfigOverrides key """ + key + """ — only ""suspendMode"" can be overridden"
+        end if
+    end for
+
+    return sanitized
+end function
+
+' Merges per-navigation overrides into a view's route config. Used to override the outgoing/
+' suspending view's config (e.g. suspendMode) for a single navigation. The override is applied to
+' the view's own per-navigation route node, so the shared route config registered via addRoutes is
+' left untouched.
+' @param {Object} view - The outgoing view whose route config should be overridden
+' @param {Object} overrides - The route config fields to override for this navigation
+sub applyOutgoingRouteConfigOverrides(view as Object, overrides as Object)
+    if rodash.isNode(view) AND rodash.isNode(view.route) then
+        view.route.routeConfig = rodash.merge(view.route.routeConfig, overrides)
     end if
 end sub
 

@@ -62,6 +62,7 @@ Each route object can include:
 | `keepAlive` | object | ❌ | `{ enabled: false }` | When `enabled: true`, the view is suspended (not destroyed) when navigated away from |
 | `suspendMode` | string | ❌ | `"detach"` for `keepAlive`, else `"hide"` | How the view is held while suspended — `"detach"` (removed from the tree and held in a store, re-attached on resume), `"hide"` (kept in the tree, hidden and moved off-screen), `"show"` (kept in the tree, rendered in place). See [View suspension](#-view-suspension) |
 | `canActivate` | array | ❌ | `[]` | Guards that must allow navigation before the view is shown (see [Route Guards](#-route-guards)) |
+| `outgoingRouteConfigOverrides` | object | ❌ | — | Override applied to the **outgoing** view when navigating to this route (e.g. `{ suspendMode: "detach" }`) — for that navigation only, never mutating the outgoing route's config. Only `suspendMode` is supported. See [outgoingRouteConfigOverrides](#outgoingrouteconfigoverrides--overriding-the-outgoing-view) |
 
 ### View Lifecycle Methods
 
@@ -468,6 +469,40 @@ sgRouter.addRoutes([
     { pattern: "/movies", component: "CatalogScreen", keepAlive: { enabled: true } } ' defaults to "detach"
 ])
 ```
+
+### `outgoingRouteConfigOverrides` — overriding the outgoing view
+
+Sometimes the **incoming** route knows best how the **outgoing** view should be suspended. For example, a full-screen player might want the screen underneath it to fully `detach`, even though that screen normally `hide`s. `outgoingRouteConfigOverrides` lets the incoming route override the outgoing/suspending view's `suspendMode` **for that one navigation only** — it never mutates the outgoing route's registered config.
+
+> Only `suspendMode` may be overridden today; any other key is ignored (with a warning), as is an invalid `suspendMode` value. This keeps the surface safe — you can't, for example, flip `keepAlive` on a view that is already mounted and suspending.
+
+There are three ways to supply it, listed lowest → highest precedence (each merges over the previous):
+
+1. **On the incoming route config** — applies every time you navigate to that route:
+
+```brightscript
+sgRouter.addRoutes([
+    { pattern: "/home", component: "HomeScreen" }, ' normally suspends per its own suspendMode
+    { pattern: "/player", component: "PlayerScreen", outgoingRouteConfigOverrides: { suspendMode: "detach" } }
+])
+```
+
+2. **As a `navigateTo` option** — applies to a single call:
+
+```brightscript
+sgRouter.navigateTo("/player", { outgoingRouteConfigOverrides: { suspendMode: "detach" } })
+```
+
+3. **Resolved from the incoming view's `beforeViewOpen`** — when the decision is dynamic (depends on data the incoming view loads):
+
+```brightscript
+function beforeViewOpen(params as Object) as Dynamic
+    ' ...decide based on params/state...
+    return Promises.resolve({ outgoingRouteConfigOverrides: { suspendMode: "detach" } })
+end function
+```
+
+> The override is applied to the outgoing view's per-navigation route node, used while it suspends, then reverted — so it does not leak onto the view if it is later resumed (e.g. via `goBack`). It applies on forward navigation (where `beforeViewOpen` runs); `goBack` does not trigger it.
 
 ### `beforeViewSuspend`
 
