@@ -25,7 +25,7 @@
     "build-sample-project": "cd test-project && npx bsc",
     "test": "npx rooibos --project=./tests/bsconfig.json",
     "createDataSet": "ts-node ./scripts/createDataSet.ts",
-    "audit": "npm audit || audit-ci --config ./audit-ci.jsonc"
+    "audit": "npm audit --audit-level=high || audit-ci --config ./audit-ci.jsonc"
   },
   "author": "Tyler Smith",
   "license": "MIT",
