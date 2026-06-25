@@ -883,6 +883,7 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object, outgoingRou
         end if
         return promises.reject(error)
     end function).toPromise()
+end function
 
 ' Runs the close lifecycle for a view: _beforeViewClose (while still visible, e.g. an exit
 ' animation) -> remove the node. The view is left visible during _beforeViewClose — mirroring
