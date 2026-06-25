@@ -796,21 +796,14 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object, outgoingRou
         promisesToResolve = []
 
         ' Handle the active view:
-        ' - in closeViews: its lifecycle is owned by the closeViews loop below. A keepAlive view
-        '   is suspended there (beforeViewSuspend -> hide -> onViewSuspend), keeping the hide
-        '   ordered after beforeViewSuspend; a non-keepAlive view is being destroyed, so hide it
-        '   now (consistent with closeView) — beforeViewClose runs in the loop.
+        ' - in closeViews: its lifecycle is owned by the closeViews loop below. The view stays
+        '   visible so _beforeViewClose (or _beforeViewSuspend for keepAlive) runs against a
+        '   visible view; hide/destroy happens in the post-showView loop in the next .then().
         ' - otherwise: run the suspend lifecycle (awaited so the new view is not shown until
         '   the old view's _beforeViewSuspend resolves). Final placement follows suspendMode:
         '   "detach" views move into the detach store; "hide"/"show" views stay in viewTarget.
-        if m.__router_activeView <> Invalid then
-            if isActiveInCloseViews then
-                if NOT rodash.getBoolean(m.__router_activeView.route.routeConfig.keepAlive, "enabled") then
-                    hideView(m.__router_activeView)
-                end if
-            else
-                promisesToResolve.push(suspendView(m.__router_activeView))
-            end if
+        if m.__router_activeView <> Invalid AND NOT isActiveInCloseViews then
+            promisesToResolve.push(suspendView(m.__router_activeView))
         end if
 
         ' Close or suspend views in closeViews.
