@@ -281,8 +281,21 @@ target with `navigationState.fromRedirect=true`. Events: `GuardsCheckStart` →
 Event types (`RouterState` enum): `NavigationStart`, `RoutesRecognized`, `GuardsCheckStart`,
 `GuardsCheckEnd`, `ActivationStart`, `ActivationEnd`, `ResolveStart`, `ResolveEnd`,
 `NavigationEnd`, `NavigationCancel`, `NavigationError`. Payload:
-`{ id, type, url?, state? (route snapshot), error? }`. `dispatchRouterState` also flips the
-`navigationInProgress` flag on Start/End/Error.
+`{ id, type, url?, state?, error? }`, where `state` is the route snapshot
+`{ routeConfig, routeParams, queryParams, navigationState, hash }` (see `createRouteSnapshot`).
+`dispatchRouterState` also flips the `navigationInProgress` flag on Start/End/Error.
+
+**Terminal-event guarantee:** every navigation that dispatched `NavigationStart` ends with exactly
+one terminal event — `NavigationEnd`, `NavigationError`, or `NavigationCancel` — and all of them
+carry the route (so `state`/`navigationState`/`url` are populated). All three navigation entry
+points (`_navigateTo`, `_goBack`, `_popToCheckpoint`) have a catch-all `.catch` that emits a
+route-bearing `NavigationError` for rejections that would otherwise be silent (invalid guard
+result, view-creation failure, a lifecycle hook rejecting) and clears the in-progress flags so a
+later navigation is not permanently blocked. `dispatchRouterState` tracks this via
+`m.__router_terminalDispatched` (set on End/Error/Cancel, cleared on Start) so a catch never
+double-dispatches or converts a `Cancel` into an `Error`; `m.__router_activeNavRoute` is stashed on
+`NavigationStart` to give each catch a route to report. Note `NavigationCancel` is terminal but
+does **not** reset `navigationInProgress` — its caller (or the catch) does.
 
 ---
 
@@ -309,6 +322,12 @@ leading `/`).
   this reason. Don't rely on case-sensitive key matches across the callFunc boundary.
 - **Nested AAs don't survive the promise context reliably.** Promise-chain context carries
   `suspendMode` as a plain string, not a nested override AA. Keep promise-context payloads flat.
+- **Inline functions don't close over outer locals, and `.catch` gets no context.** BrighterScript
+  anonymous functions compile to standalone functions — they cannot read the enclosing function's
+  local variables. `.then` callbacks receive the promise context as their 2nd arg, but `.catch`
+  callbacks receive only the error. So a `.catch` that needs navigation state must read it from `m`
+  (e.g. `m.__router_activeNavRoute`, `m.__router_pendingOutgoingView`/`...Config`). Threading a
+  value only through a chain context AA will be `Invalid` inside `.catch`.
 - **History stack ≠ tree child order.** Back navigation reads `__router_historyStack`. Detached
   views aren't even in the tree. Never infer order from `viewTarget` children.
 - **`navigationInProgress` is a hard re-entrancy gate.** Concurrent navigations reject. A redirect

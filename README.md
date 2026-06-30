@@ -170,6 +170,7 @@ end sub
     "routeConfig": {},
     "queryParams": {},
     "routeParams": {},
+    "navigationState": {},   // { fromPushState, fromPopState, fromKeepAlive, fromRedirect }
     "hash": ""
   },
   "error": {}       // only present on NavigationError

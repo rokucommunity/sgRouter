@@ -4,6 +4,7 @@ import "pkg:/source/router.bs"
 
 ' Initialize the router
 sub init()
+    m.__router_activeNavRoute = Invalid
     m.__router_activeView = Invalid
     m.__router_detachedViews = {}
     m.__router_deviceInfo = Invalid
@@ -13,8 +14,11 @@ sub init()
     m.__router_nameMap = {}
     m.__router_navigationInProgress = false
     m.__router_outlet = Invalid
+    m.__router_pendingOutgoingConfig = Invalid
+    m.__router_pendingOutgoingView = Invalid
     m.__router_processingGoBack = false
     m.__router_routes = {}
+    m.__router_terminalDispatched = false
 
     m.top.focusable = true
 end sub
@@ -44,6 +48,7 @@ sub _destroy(_ = Invalid as Dynamic)
         m.__router_outlet.unobserveField("focusedChild")
     end if
 
+    m.__router_activeNavRoute = Invalid
     m.__router_activeView = Invalid
     m.__router_deviceInfo = Invalid
     m.__router_focusRequestMade = false
@@ -55,8 +60,11 @@ sub _destroy(_ = Invalid as Dynamic)
     m.__router_nameMap = {}
     m.__router_navigationInProgress = false
     m.__router_outlet = Invalid
+    m.__router_pendingOutgoingConfig = Invalid
+    m.__router_pendingOutgoingView = Invalid
     m.__router_processingGoBack = false
     m.__router_routes = {}
+    m.__router_terminalDispatched = false
 
     ' Destroy any detached (suspended-out-of-tree) views still held in the store.
     for each id in m.__router_detachedViews
@@ -165,6 +173,11 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
         reattachView(viewToOpen)
     end if
 
+    ' Apply the pop navigation state before dispatching NavigationStart so the event carries the
+    ' correct (fromPopState) navigation state on the route.
+    viewToOpenFromKeepAlive = rodash.getBoolean(viewToOpen.route.routeConfig.keepAlive, "enabled")
+    _applyPopNavigationState(viewToOpen, viewToOpenFromKeepAlive)
+
     ' An event triggered when a navigation starts.
     dispatchRouterState(RouterState.NavigationStart, {
         id: viewToOpen.route.id
@@ -175,13 +188,26 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     viewToClose = m.__router_activeView
     closePromise = closeOrSuspendView(viewToClose)
 
-    viewToOpenFromKeepAlive = rodash.getBoolean(viewToOpen.route.routeConfig.keepAlive, "enabled")
-    promises.chain(closePromise, { view: viewToOpen, fromKeepAlive: viewToOpenFromKeepAlive }).then(sub(_ as Dynamic, ctx as Dynamic)
+    promises.chain(closePromise, { view: viewToOpen }).then(function(_ as Dynamic, ctx as Dynamic) as Dynamic
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
-        _applyPopNavigationState(ctx.view, ctx.fromKeepAlive)
         m.__router_historyStack.pop()
-        showView(ctx.view, true)
-    end sub)
+        return showView(ctx.view, true)
+    end function).catch(function(error as Dynamic) as Dynamic
+        ' Catch-all terminal event for back navigation: if the close/suspend or showView chain
+        ' rejected without any terminal event (e.g. an outgoing view's _beforeViewClose /
+        ' _beforeViewSuspend rejecting), emit a route-bearing NavigationError and clear the
+        ' in-progress flags so a later navigation is not permanently blocked. Skipped when a
+        ' terminal event was already dispatched (see m.__router_terminalDispatched).
+        if NOT m.__router_terminalDispatched then
+            dispatchRouterState(RouterState.NavigationError, {
+                error: error
+                route: m.__router_activeNavRoute
+            })
+        end if
+        m.__router_processingGoBack = false
+        m.__router_navigationInProgress = false
+        return promises.reject(error)
+    end function)
 
     return true
 end function
@@ -295,6 +321,11 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
         reattachView(targetView)
     end if
 
+    ' Apply the pop navigation state before dispatching NavigationStart so the event carries the
+    ' correct (fromPopState) navigation state on the route.
+    targetKeepAlive = rodash.getBoolean(targetView.route.routeConfig.keepAlive, "enabled")
+    _applyPopNavigationState(targetView, targetKeepAlive)
+
     ' Dispatch NavigationStart
     dispatchRouterState(RouterState.NavigationStart, {
         id: targetView.route.id
@@ -322,14 +353,21 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
         closePromises.push(closeView(v))
     end for
 
-    targetKeepAlive = rodash.getBoolean(targetView.route.routeConfig.keepAlive, "enabled")
-    return promises.chain(promises.all(closePromises), { targetView: targetView, targetFromKeepAlive: targetKeepAlive }).then(function(_ as Dynamic, ctx as Dynamic) as Dynamic
+    return promises.chain(promises.all(closePromises), { targetView: targetView }).then(function(_ as Dynamic, ctx as Dynamic) as Dynamic
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
-        _applyPopNavigationState(ctx.targetView, ctx.targetFromKeepAlive)
         return showView(ctx.targetView, true)
     end function).then(function(_ as Dynamic, ctx as Dynamic) as Dynamic
         return promises.resolve(Invalid)
     end function).catch(function(error as Dynamic) as Dynamic
+        ' Catch-all terminal event: if the close/suspend or showView chain rejected without any
+        ' terminal event having been dispatched, emit a route-bearing NavigationError so observers
+        ' always see a consistent terminal state. Skipped when a terminal event already fired.
+        if NOT m.__router_terminalDispatched then
+            dispatchRouterState(RouterState.NavigationError, {
+                error: error
+                route: m.__router_activeNavRoute
+            })
+        end if
         m.__router_processingGoBack = false
         m.__router_navigationInProgress = false
         return promises.reject(error)
@@ -440,6 +478,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
                 dispatchRouterState(RouterState.NavigationError, {
                     id: id
                     error: message
+                    route: newRoute
                 })
                 return promises.reject(message)
             end if
@@ -513,10 +552,21 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
         dispatchRouterState(RouterState.NavigationError, {
             id: id
             error: message
+            route: newRoute
         })
 
         return promises.reject(message)
     end function).catch(function(error as Dynamic) as Dynamic
+        ' Catch-all terminal event: if the chain rejected without any explicit terminal event
+        ' (e.g. an invalid guard result, or a view-creation failure in addViewToStack), emit a
+        ' route-bearing NavigationError so observers always see a consistent terminal state.
+        ' Skipped when a terminal event (NavigationEnd/Error/Cancel) was already dispatched.
+        if NOT m.__router_terminalDispatched then
+            dispatchRouterState(RouterState.NavigationError, {
+                error: error
+                route: m.__router_activeNavRoute
+            })
+        end if
         m.__router_navigationInProgress = false
         return promises.reject(error)
     end function).toPromise()
@@ -739,6 +789,13 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object, outgoingRou
     originalOutgoingConfig = Invalid
     if rodash.isNode(outgoingView) then originalOutgoingConfig = rodash.clone(outgoingView.route.routeConfig)
 
+    ' Also stash the outgoing view + its original config on m so the .catch below can revert the
+    ' per-navigation override on failure. BrighterScript inline functions do not close over outer
+    ' locals, and .catch callbacks receive no promise context, so m is the only way the catch can
+    ' reach these. Navigations are gated (navigationInProgress), so there is no overlap to clobber.
+    m.__router_pendingOutgoingView = outgoingView
+    m.__router_pendingOutgoingConfig = originalOutgoingConfig
+
     return promises.chain(toResolve, { view: view, closeViews: closeViews, fromKeepAlive: keepAliveView <> Invalid, navOutgoingSuspendMode: navOutgoingSuspendMode, outgoingView: outgoingView, originalOutgoingConfig: originalOutgoingConfig }).then(function(beforeOpenResult as Dynamic, internalContext as Dynamic) as Dynamic
         view = internalContext.view
 
@@ -850,8 +907,10 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object, outgoingRou
         return response
     end function).catch(function(error as Dynamic) as Dynamic
         ' Ensure per-navigation outgoing overrides never leak if a lifecycle rejects mid-navigation.
-        if rodash.isNode(outgoingView) AND rodash.isAA(originalOutgoingConfig) then
-            outgoingView.route.routeConfig = originalOutgoingConfig
+        ' Read from m (see the stash above) because .catch gets neither the promise context nor the
+        ' enclosing function's locals.
+        if rodash.isNode(m.__router_pendingOutgoingView) AND rodash.isAA(m.__router_pendingOutgoingConfig) then
+            m.__router_pendingOutgoingView.route.routeConfig = m.__router_pendingOutgoingConfig
         end if
         return promises.reject(error)
     end function).toPromise()
@@ -1276,8 +1335,18 @@ end function
 sub dispatchRouterState(stateType as String, context = {} as Dynamic)
     if stateType = RouterState.NavigationStart then
         m.__router_navigationInProgress = true
+        ' A fresh navigation: clear the terminal-dispatched marker and stash the route so the
+        ' generic catch in _navigateTo can emit a route-bearing NavigationError if the chain
+        ' rejects without any explicit terminal event having been dispatched.
+        m.__router_terminalDispatched = false
+        m.__router_activeNavRoute = context.route
     else if stateType = RouterState.NavigationEnd OR stateType = RouterState.NavigationError then
         m.__router_navigationInProgress = false
+        m.__router_terminalDispatched = true
+    else if stateType = RouterState.NavigationCancel then
+        ' Cancel is a terminal outcome too (so the generic catch won't convert it into an Error),
+        ' but it intentionally does not reset navigationInProgress — its caller does.
+        m.__router_terminalDispatched = true
     end if
 
     update = {
@@ -1304,6 +1373,7 @@ function createRouteSnapshot(route as Object) as Object
         routeConfig: route.routeConfig
         queryParams: route.queryParams
         routeParams: route.routeParams
+        navigationState: route.navigationState
         hash: route.hash
     }
 end function
@@ -1319,7 +1389,7 @@ function createBaseNavigationState() as Object
         fromRedirect: false
         fromKeepAlive: false
         fromPopState: false
-        fromPushState: false
+        fromPushState: true
     }
 end function
 
@@ -1365,6 +1435,7 @@ function findMatchingRoute(path as String, routes as Object) as sgRouter.Route
                 routeConfig: routes[routePath]
                 queryParams: queryParams
                 hash: hash
+                navigationState: createBaseNavigationState()
             })
         end if
 
@@ -1412,6 +1483,7 @@ function findMatchingRoute(path as String, routes as Object) as sgRouter.Route
             routeParams: bestMatchParams
             queryParams: queryParams
             hash: hash
+            navigationState: createBaseNavigationState()
         })
     end if
 
@@ -1422,6 +1494,7 @@ function findMatchingRoute(path as String, routes as Object) as sgRouter.Route
         path: path
         queryParams: queryParams
         hash: hash
+        navigationState: createBaseNavigationState()
     })
 end function
 
