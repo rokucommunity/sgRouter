@@ -7,10 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.1.4](https://github.com/rokucommunity/sgRouter/compare/0.1.3...v0.1.4) - 2026-06-30
-### Changed
+### Added
  - 110 add suspendmode support ([#111](https://github.com/rokucommunity/sgRouter/pull/111))
+### Changed
  - Security enhancements ([#112](https://github.com/rokucommunity/sgRouter/pull/112))
- - readme fix ([#109](https://github.com/rokucommunity/sgRouter/pull/109))
  - upgrade to [brighterscript@0.73.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0730---2026-06-29). Notable changes since 0.72.4:
      - Validate eval/rsg_version against firmware lifecycle ([#1698](https://github.com/rokucommunity/brighterscript/pull/1698))
      - Remove more prod deps: (drop array-flat-polyfill/readline, consolidate minimatch into micromatch) ([#1737](https://github.com/rokucommunity/brighterscript/pull/1737))
