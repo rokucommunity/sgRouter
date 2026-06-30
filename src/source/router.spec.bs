@@ -906,6 +906,40 @@ namespace tests
         end function
 
         @async()
+        @it("pops to a checkpointed keepAlive view whose node id was reassigned by a later resume")
+        function _() 'bs:disable-line 1026 LINT1026
+            ' Regression: a keepAlive view that is resumed by a later forward navigation has its
+            ' node id reassigned (the old id is tracked in previousNodeIds). A checkpoint set on the
+            ' view's original stack entry still points at the now-stale id, so popToCheckpoint must
+            ' resolve the target via previousNodeIds rather than rejecting with "view not found".
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/home", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/list", component: "View" }
+                { pattern: "/detail", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/home", { router: m.router }), m).then(function(_, m)
+                ' Checkpoint /home while it is the active view (stack entry records /home's first id)
+                sgRouter.setCheckpoint("cp", { router: m.router })
+                return sgRouter.navigateTo("/list", { router: m.router })
+            end function).then(function(_, m)
+                ' Forward-navigate back to /home: it is resumed from the detach store and its node id
+                ' is reassigned, leaving the checkpoint entry pointing at the old (now stale) id
+                return sgRouter.navigateTo("/home", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/detail", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popToCheckpoint("cp", { router: m.router })
+            end function).then(function(_, m)
+                ' Resolves to the live /home node instead of rejecting, and unwinds /list + /detail
+                m.assertEqual(m.router.routerState.url, "/home")
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                ' Stack is back at the checkpoint: a further goBack has nowhere to go
+                m.assertFalse(sgRouter.goBack({ router: m.router }))
+            end function).toPromise()
+        end function
+
+        @async()
         @it("uses active route path as identifier when called without argument")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })

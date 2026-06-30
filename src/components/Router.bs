@@ -149,32 +149,12 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     previousEntry = m.__router_historyStack[m.__router_historyStack.count() - 2]
     previousNodeId = previousEntry.nodeId
 
-    ' Search viewTarget first, then the detach store
-    foundView = findViewByNodeId(previousNodeId)
+    ' Resolve the previous node, tolerating a stale id: a keepAlive view can have its id reassigned
+    ' by addViewToStack on a subsequent forward navigation, leaving the history entry pointing at an
+    ' id now tracked only in the view's previousNodeIds.
+    foundView = findRetainedViewByNodeId(previousNodeId)
     viewToOpen = foundView.view
     viewToOpenFromDetached = foundView.fromDetached
-    ' KeepAlive views can have their id reassigned by addViewToStack on subsequent forward
-    ' navigations. If the nodeId is stale, check previousNodeIds on each retained view — detached
-    ' in the store, or hidden in viewTarget ("hide"/"show" mode) — to find the right node.
-    if viewToOpen = Invalid then
-        for each id in m.__router_detachedViews
-            v = m.__router_detachedViews[id]
-            if rodash.isNode(v) AND matchesPreviousNodeId(v, previousNodeId) then
-                viewToOpen = v
-                viewToOpenFromDetached = true
-                exit for
-            end if
-        end for
-    end if
-    if viewToOpen = Invalid then
-        for each v in rodash.getNodeChildren(m.__router_viewTarget)
-            if matchesPreviousNodeId(v, previousNodeId) then
-                viewToOpen = v
-                viewToOpenFromDetached = false
-                exit for
-            end if
-        end for
-    end if
 
     if viewToOpen = Invalid then
         m.__router_processingGoBack = false
@@ -284,9 +264,11 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
         return promises.reject({ message: "popToCheckpoint: no matching checkpoint found in history stack" })
     end if
 
-    ' Find the target view node by nodeId
+    ' Find the target view node by nodeId, tolerating a stale id (a keepAlive view that was resumed
+    ' by a later forward navigation has its current id reassigned; the checkpoint entry still points
+    ' at the old id, now tracked only in the view's previousNodeIds).
     targetNodeId = m.__router_historyStack[targetIndex].nodeId
-    foundView = findViewByNodeId(targetNodeId)
+    foundView = findRetainedViewByNodeId(targetNodeId)
     targetView = foundView.view
     targetFromDetached = foundView.fromDetached
 
@@ -322,10 +304,13 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
     ' Set the new stack after the NavigationStart event in case any listeners read from the stack (e.g. for analytics)
     m.__router_historyStack = newStack
 
-    ' Close or suspend in-tree views above the target.
+    ' Close or suspend in-tree views above the target. Skip the target itself: when a keepAlive
+    ' target was resumed by a later forward navigation, that resume left a newer history entry above
+    ' the checkpoint whose nodeId is the target's current (live) id — so the target's own id can
+    ' appear in nodeIdsToClose, and it must not be closed.
     closePromises = []
     for each v in rodash.getNodeChildren(m.__router_viewTarget)
-        if nodeIdsToClose[v.id] = true then
+        if nodeIdsToClose[v.id] = true AND v.id <> targetView.id then
             closePromises.push(closeOrSuspendView(v))
         end if
     end for
@@ -1144,6 +1129,25 @@ function findViewByNodeId(nodeId as String) as Object
     if rodash.isNode(m.__router_detachedViews[nodeId]) then
         return { view: m.__router_detachedViews[nodeId], fromDetached: true }
     end if
+    return { view: Invalid, fromDetached: false }
+end function
+
+' Resolves a (possibly stale) history nodeId to a retained view node. Tries an exact id match
+' first (findViewByNodeId); if that misses, a keepAlive view may have had its id reassigned by a
+' later forward navigation (the old id is recorded in previousNodeIds), so it falls back to
+' matching the id against each retained view's previousNodeIds — in the detach store first, then
+' in viewTarget. Returns { view: node, fromDetached: Boolean }; view is Invalid if none match.
+function findRetainedViewByNodeId(nodeId as String) as Object
+    found = findViewByNodeId(nodeId)
+    if found.view <> Invalid then return found
+
+    for each id in m.__router_detachedViews
+        v = m.__router_detachedViews[id]
+        if rodash.isNode(v) AND matchesPreviousNodeId(v, nodeId) then return { view: v, fromDetached: true }
+    end for
+    for each v in rodash.getNodeChildren(m.__router_viewTarget)
+        if matchesPreviousNodeId(v, nodeId) then return { view: v, fromDetached: false }
+    end for
     return { view: Invalid, fromDetached: false }
 end function
 
