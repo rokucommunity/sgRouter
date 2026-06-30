@@ -19,7 +19,6 @@ namespace sgRouter
         optional clearStackOnResolve as Boolean ' clear the view stack when this route is activated
         optional keepAlive as sgRouter.KeepAliveConfig
         optional suspendMode as String ' "detach" | "hide" | "show" - how the view is held while suspended (default: "detach" for keepAlive routes, "hide" otherwise)
-        optional outgoingRouteConfigOverrides as Object ' override applied to the OUTGOING view when navigating to this route, e.g. { suspendMode: "detach" } - per-navigation only, does not mutate the outgoing route's registered config. Only suspendMode is supported; other keys are ignored
     end interface
 
     interface KeepAliveConfig
