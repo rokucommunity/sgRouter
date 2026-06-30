@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.1.4](https://github.com/rokucommunity/sgRouter/compare/0.1.3...v0.1.4) - 2026-06-30
+### Changed
+ - 110 add suspendmode support ([#111](https://github.com/rokucommunity/sgRouter/pull/111))
+ - Security enhancements ([#112](https://github.com/rokucommunity/sgRouter/pull/112))
+ - readme fix ([#109](https://github.com/rokucommunity/sgRouter/pull/109))
+ - upgrade to [brighterscript@0.73.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0730---2026-06-29). Notable changes since 0.72.4:
+     - Validate eval/rsg_version against firmware lifecycle ([#1698](https://github.com/rokucommunity/brighterscript/pull/1698))
+     - Remove more prod deps: (drop array-flat-polyfill/readline, consolidate minimatch into micromatch) ([#1737](https://github.com/rokucommunity/brighterscript/pull/1737))
+     - Replace single-use deps with util/formatUtils helpers ([#1736](https://github.com/rokucommunity/brighterscript/pull/1736))
+     - chore: remove dead production dependencies ([#1735](https://github.com/rokucommunity/brighterscript/pull/1735))
+     - Bump form-data from 2.5.5 to 2.5.6 ([#1733](https://github.com/rokucommunity/brighterscript/pull/1733))
+ - upgrade to [rooibos-roku@5.16.4](https://github.com/rokucommunity/rooibos/blob/master/CHANGELOG.md#5164---2026-06-10). Notable changes since 5.16.3:
+     - Make tests less brittle - removes full transpile string checks ([#396](https://github.com/rokucommunity/rooibos/pull/396))
+     - Update minimum audit threshold ([#397](https://github.com/rokucommunity/rooibos/pull/397))
+     - Accept GHSA-w5hq-g745-h8pq (uuid <11.1.1) advisory ([#395](https://github.com/rokucommunity/rooibos/pull/395))
+     - Add security-audit-required job to security-audit workflow ([#393](https://github.com/rokucommunity/rooibos/pull/393))
+ - upgrade to [ropm@0.11.9](https://github.com/rokucommunity/ropm/blob/master/CHANGELOG.md#0119---2026-06-10). Notable changes since 0.11.8:
+
+
+
 ## [0.1.3](https://github.com/rokucommunity/sgRouter/compare/0.1.2...v0.1.3) - 2026-06-08
 ### Added
  - Add checkpoint support ([#93](https://github.com/rokucommunity/sgRouter/pull/93))
