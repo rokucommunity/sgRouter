@@ -60,7 +60,9 @@ Each route object can include:
 | `allowReuse` | boolean | ❌ | `false` | When `true`, navigating to the same route calls `onRouteUpdate` instead of creating a new view |
 | `clearStackOnResolve` | boolean | ❌ | `false` | Destroys all previous views in the stack when this route activates |
 | `keepAlive` | object | ❌ | `{ enabled: false }` | When `enabled: true`, the view is suspended (not destroyed) when navigated away from |
+| `suspendMode` | string | ❌ | `"detach"` for `keepAlive`, else `"hide"` | How the view is held while suspended — `"detach"` (removed from the tree and held in a store, re-attached on resume), `"hide"` (kept in the tree, hidden and moved off-screen), `"show"` (kept in the tree, rendered in place). See [View suspension](#-view-suspension) |
 | `canActivate` | array | ❌ | `[]` | Guards that must allow navigation before the view is shown (see [Route Guards](#-route-guards)) |
+| `outgoingRouteConfigOverrides` | object | ❌ | — | Override applied to the **outgoing** view when navigating to this route (e.g. `{ suspendMode: "detach" }`) — for that navigation only, never mutating the outgoing route's config. Only `suspendMode` is supported. See [outgoingRouteConfigOverrides](#outgoingrouteconfigoverrides--overriding-the-outgoing-view) |
 
 ### View Lifecycle Methods
 
@@ -69,6 +71,7 @@ Views extending `sgRouter_View` can define:
 - `beforeViewOpen` → Called before the view loads (e.g. async setup, API calls)
 - `onViewOpen` → Called after previous view is closed/suspended
 - `beforeViewClose` → Invoked before a view is destroyed
+- `beforeViewSuspend` → Invoked before a view is hidden/suspended (before `onViewSuspend`)
 - `onViewSuspend` / `onViewResume` → Handle stack suspensions/resumptions
 - `onRouteUpdate` → Fired when navigating to the same route with updated params/hash
 - `handleFocus` → Defines focus handling when the view becomes active
@@ -374,7 +377,7 @@ Every view lifecycle receives a **route snapshot** so your screen logic can reac
 
 ### What you get in `params`
 
-`beforeViewOpen`, `onViewOpen`, `beforeViewClose`, `onViewSuspend`, and `onViewResume` all receive a `params` object constructed by the router just before the lifecycle is called, which includes:
+`beforeViewOpen`, `onViewOpen`, `beforeViewClose`, `beforeViewSuspend`, `onViewSuspend`, and `onViewResume` all receive a `params` object constructed by the router just before the lifecycle is called, which includes:
 
 ```text
 params.route.routeConfig          ' the matched route definition
@@ -388,7 +391,7 @@ params.route.navigationState      ' how this navigation was triggered:
   .fromRedirect                   '   true when arrived via a canActivate guard redirect
 ```
 
-The snapshot is sourced from the URL you navigated to (e.g. `"/details/movies/42?page=2&sort=trending#grid=poster"`). The router builds this object and passes it into `beforeViewOpen(params)`, `onViewOpen(params)`, `beforeViewClose(params)`, `onViewSuspend(params)`, and `onViewResume(params)`.
+The snapshot is sourced from the URL you navigated to (e.g. `"/details/movies/42?page=2&sort=trending#grid=poster"`). The router builds this object and passes it into `beforeViewOpen(params)`, `onViewOpen(params)`, `beforeViewClose(params)`, `beforeViewSuspend(params)`, `onViewSuspend(params)`, and `onViewResume(params)`.
 
 `onRouteUpdate` is different — it receives an object with both the old and new route (`params.oldRoute` and `params.newRoute`), so you can diff the two and respond to exactly what changed.
 
@@ -437,6 +440,121 @@ The route snapshot is assembled by the router by parsing:
 - the **hash** → `hash`
 
 That structured object is then provided to the view lifecycles mentioned above. This keeps your screens URL-driven and easy to test (you can navigate with different URLs and assert behavior based on `params`).
+
+---
+
+## 🌗 View Suspension
+
+When you navigate away from a view, the router **suspends** the outgoing view rather than tearing it down immediately. Two things control this: the `suspendMode` route option (how the view is hidden) and the `beforeViewSuspend` lifecycle hook (a chance to run code before it's hidden).
+
+This applies to **every** outgoing view — both `keepAlive` views (which are retained for later resumption) and ordinary views (which stay around in the stack for `goBack`). Only views that are actually destroyed (non-`keepAlive` views removed by `clearStackOnResolve`, `popToCheckpoint`, etc.) go through `beforeViewClose` instead.
+
+### `suspendMode`
+
+`suspendMode` decides how a view is held once it has been suspended:
+
+| Mode | Behaviour |
+|---|---|
+| `"detach"` | The view is **removed from the SceneGraph tree** entirely and held in an internal store, then re-attached when it is resumed. Frees its render/texture cost completely while suspended. This is the default for `keepAlive` routes. |
+| `"hide"` | The view is kept in the tree but hidden (`visible = false`) **and** moved off-screen (`translation = [10000, 10000]`). This is the default for ordinary (non-`keepAlive`) routes. |
+| `"show"` | The view is left **rendered in place** (`visible = true`, position unchanged). Use this when the outgoing view should remain on screen underneath the incoming one — e.g. a transparent overlay, or a cross-fade you drive yourself. |
+
+> The default is keepAlive-aware: a `keepAlive` route defaults to `"detach"` (it is retained across stack clears, so it pays to free its render cost while suspended), while an ordinary route defaults to `"hide"`. Visibility — and tree membership, for `"detach"` — is restored on resume.
+
+> Unknown `suspendMode` values fall back to the default for that route (a warning is printed at `addRoutes` time). Values are case-sensitive.
+
+```brightscript
+sgRouter.addRoutes([
+    { pattern: "/shows", component: "CatalogScreen", suspendMode: "show" },
+    { pattern: "/movies", component: "CatalogScreen", keepAlive: { enabled: true } } ' defaults to "detach"
+])
+```
+
+### `outgoingRouteConfigOverrides` — overriding the outgoing view
+
+Sometimes the **incoming** route knows best how the **outgoing** view should be suspended. For example, a full-screen player might want the screen underneath it to fully `detach`, even though that screen normally `hide`s. `outgoingRouteConfigOverrides` lets the incoming route override the outgoing/suspending view's `suspendMode` **for that one navigation only** — it never mutates the outgoing route's registered config.
+
+> Only `suspendMode` may be overridden today; any other key is ignored (with a warning), as is an invalid `suspendMode` value. This keeps the surface safe — you can't, for example, flip `keepAlive` on a view that is already mounted and suspending.
+
+There are three ways to supply it, listed lowest → highest precedence (each merges over the previous):
+
+1. **On the incoming route config** — applies every time you navigate to that route:
+
+```brightscript
+sgRouter.addRoutes([
+    { pattern: "/home", component: "HomeScreen" }, ' normally suspends per its own suspendMode
+    { pattern: "/player", component: "PlayerScreen", outgoingRouteConfigOverrides: { suspendMode: "detach" } }
+])
+```
+
+2. **As a `navigateTo` option** — applies to a single call:
+
+```brightscript
+sgRouter.navigateTo("/player", { outgoingRouteConfigOverrides: { suspendMode: "detach" } })
+```
+
+3. **Resolved from the incoming view's `beforeViewOpen`** — when the decision is dynamic (depends on data the incoming view loads):
+
+```brightscript
+function beforeViewOpen(params as Object) as Dynamic
+    ' ...decide based on params/state...
+    return Promises.resolve({ outgoingRouteConfigOverrides: { suspendMode: "detach" } })
+end function
+```
+
+> The override is applied to the outgoing view's per-navigation route node, used while it suspends, then reverted — so it does not leak onto the view if it is later resumed (e.g. via `goBack`). It applies on forward navigation (where `beforeViewOpen` runs); `goBack` does not trigger it.
+
+### `beforeViewSuspend`
+
+`beforeViewSuspend(params)` fires on the **outgoing** view while it is still visible, before it is hidden. Like `beforeViewOpen`, it can return a promise — the router **waits** for that promise to resolve before hiding the view and showing the next screen.
+
+The lifecycle ordering is guaranteed to be:
+
+```text
+beforeViewOpen(next)      ' the incoming view prepares (data load, etc.)
+  → beforeViewSuspend(prev)   ' awaited — outgoing view is still visible here
+  → (prev is hidden per suspendMode)
+  → onViewSuspend(prev)
+  → onViewOpen(next)          ' incoming view is now shown
+```
+
+Because it runs **after** the next view's `beforeViewOpen` and **blocks** until your promise resolves, the hook only proceeds once the next screen is ready. It receives the same [route snapshot](#-route-snapshot-in-lifecycle-hooks) `params` as the other lifecycle hooks.
+
+What you do in the hook is up to you — flush analytics, persist scroll position, release resources, and so on. As one example, because the outgoing view is still visible and the router awaits your promise, you could play a fade-out and resolve only when it finishes:
+
+```brightscript
+' --- CatalogScreen.bs ---
+function beforeViewSuspend(params = {} as object) as dynamic
+    ' Resolve any prior pending promise first so it can never dangle if a new
+    ' navigation interrupts an in-flight fade-out.
+    resolveSuspendPromise()
+
+    ' Create a deferred and return it; resolve it when the fade-out completes.
+    m.suspendPromise = promises.create()
+    m.fadeOutInterpolator.keyValue = [m.container.opacity, 0]
+    m.fadeAnimation.observeField("state", "onFadeAnimationStateChanged")
+    m.fadeAnimation.control = "start"
+    return m.suspendPromise
+end function
+
+sub onFadeAnimationStateChanged(event as object)
+    if event.getData() = "stopped" then resolveSuspendPromise()
+end sub
+
+' Resolves the pending promise exactly once and stops observing — idempotent, so
+' it's safe to call from the observer, on re-entry, or on teardown.
+sub resolveSuspendPromise()
+    m.fadeAnimation.unobserveField("state")
+    if m.suspendPromise <> invalid then
+        promise = m.suspendPromise
+        m.suspendPromise = invalid
+        ' Resolve the deferred — pass the promise as the SECOND argument
+        promises.resolve(true, promise)
+    end if
+end sub
+```
+
+> ⚠️ If you return a promise, make sure it always resolves. Because the router awaits `beforeViewSuspend`, a promise that never resolves will stall navigation. Routing every resolution through a single idempotent helper (as above) guarantees a pending promise is always settled — even if a fade is interrupted by a re-entrant navigation.
 
 ---
 
@@ -502,9 +620,9 @@ end function
 
 ### Stack behaviour
 
-- **Views above the target** — removed from the active navigation stack. Non-`keepAlive` views are closed and destroyed; `keepAlive` views that were already suspended remain suspended in `keepAliveViewTarget` (the checkpoint operation does not affect their suspended state).
-- **The target view** — if it was suspended in `keepAliveViewTarget` it is restored to `viewTarget`; `onViewResume` fires as normal.
-- **History stack** — truncated to `[0..targetIndex]` for navigation purposes. A `goBack` immediately after `popToCheckpoint` sees only the entries up to and including the target, even though suspended `keepAlive` views above the target are still retained in `keepAliveViewTarget`.
+- **Views above the target** — removed from the active navigation stack. Non-`keepAlive` views are closed and destroyed; `keepAlive` views that were already suspended remain suspended (the checkpoint operation does not affect their suspended state).
+- **The target view** — if it was suspended it is restored to `viewTarget` (re-attached, if it was detached); `onViewResume` fires as normal.
+- **History stack** — truncated to `[0..targetIndex]` for navigation purposes. A `goBack` immediately after `popToCheckpoint` sees only the entries up to and including the target, even though suspended `keepAlive` views above the target are still retained.
 
 ```brightscript
 ' Stack: /home [checkpoint="shop"] → /details/42 → /cart → /checkout

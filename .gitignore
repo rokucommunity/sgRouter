@@ -58,3 +58,6 @@ roku_modules
 dist
 docs
 *.tgz
+
+# Local Roku device credentials (never commit)
+.roku.local

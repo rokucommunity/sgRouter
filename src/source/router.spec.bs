@@ -28,6 +28,24 @@ namespace tests
             m.router.unobserveField("routerState")
         end function
 
+        ' Returns the first view held in the detach store, or Invalid if the store is empty.
+        private function firstDetachedView() as Object
+            detached = m.router@._getDetachedViews()
+            for each id in detached
+                return detached[id]
+            end for
+            return Invalid
+        end function
+
+        ' Returns the detached view whose route path matches, or Invalid if none match.
+        private function detachedViewByPath(path as String) as Object
+            detached = m.router@._getDetachedViews()
+            for each id in detached
+                if detached[id].route.path = path then return detached[id]
+            end for
+            return Invalid
+        end function
+
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         @describe("addRoutes")
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -46,6 +64,7 @@ namespace tests
                     "component": "View"
                     "clearstackonresolve": false
                     "keepalive": { enabled: false }
+                    "suspendmode": "hide"
                     "pattern": "/alpha"
                 },
                 "/beta": {
@@ -54,6 +73,7 @@ namespace tests
                     "component": "View"
                     "clearstackonresolve": false
                     "keepalive": { enabled: false }
+                    "suspendmode": "hide"
                     "pattern": "/beta"
                 }
             })
@@ -341,7 +361,7 @@ namespace tests
         end function
 
         @async()
-        @it("preserves keepAlive views in keepAliveViewTarget on clearStackOnResolve")
+        @it("preserves keepAlive views in the detach store on clearStackOnResolve")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
             m.router@._addRoutes([
@@ -354,9 +374,10 @@ namespace tests
             end function).then(function(_, m)
                 return sgRouter.navigateTo("/root", { router: m.router })
             end function).then(function(_, m)
-                ' /root is in viewTarget, /beta is preserved in keepAliveViewTarget, /alpha destroyed
+                ' /root is in viewTarget, /beta (keepAlive → default "detach") is preserved in the
+                ' detach store, /alpha destroyed
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
-                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
             end function).toPromise()
         end function
 
@@ -365,7 +386,7 @@ namespace tests
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
         @async()
-        @it("resumes a keepAlive view from keepAliveViewTarget on navigateTo")
+        @it("resumes a keepAlive view from the detach store on navigateTo")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
             m.router@._addRoutes([
@@ -373,17 +394,407 @@ namespace tests
                 { pattern: "/beta", component: "View", clearStackOnResolve: true }
             ])
             return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
-                ' Navigate away — /alpha should be suspended into keepAliveViewTarget
+                ' Navigate away — /alpha (keepAlive → default "detach") should be held in the store
                 return sgRouter.navigateTo("/beta", { router: m.router })
             end function).then(function(_, m)
-                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
-                ' Navigate back to /alpha — should resume from keepAliveViewTarget
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+                ' Navigate back to /alpha — should resume from the detach store
                 return sgRouter.navigateTo("/alpha", { router: m.router })
             end function).then(function(_, m)
-                ' /alpha is active again; keepAliveViewTarget should be empty
-                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 0)
+                ' /alpha is active again; the detach store should be empty
+                m.assertEqual(m.router@._getDetachedViews().count(), 0)
                 m.assertEqual(m.router.routerState.url, "/alpha")
                 m.assertTrue(m.router.routerState.state.routeConfig.keepAlive.enabled)
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("suspendMode")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        @async()
+        @it("defaults to hide for an ordinary route: hides the suspended view and moves it offscreen")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha stays in viewTarget; default "hide" makes it hidden and offscreen
+                suspendedView = m.outlet.findNode("viewTarget").getChild(0)
+                m.assertFalse(suspendedView.visible)
+                m.assertEqual(suspendedView.translation, [10000.0, 10000.0])
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("show: keeps the suspended view visible and on-screen")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", suspendMode: "show" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha is suspended in viewTarget but stays visible and at its on-screen position
+                suspendedView = m.outlet.findNode("viewTarget").getChild(0)
+                m.assertTrue(suspendedView.visible)
+                m.assertEqual(suspendedView.translation, [0.0, 0.0])
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("detach: removes an ordinary view from the tree into the detach store")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", suspendMode: "detach" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha is removed from viewTarget and held in the detach store; only /beta remains in the tree
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+                detached = m.router@._getDetachedViews()
+                for each id in detached
+                    m.assertFalse(detached[id].visible)
+                    m.assertEqual(detached[id].route.path, "/alpha")
+                end for
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("detach: a keepAlive view defaults to detach and is held in the store")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha (keepAlive, default "detach") is removed from the tree into the store
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("hide: a keepAlive view set to hide stays hidden in viewTarget")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", keepAlive: { enabled: true }, suspendMode: "hide" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha stays in viewTarget (not detached), hidden and offscreen
+                m.assertEqual(m.router@._getDetachedViews().count(), 0)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 2)
+                suspendedView = m.outlet.findNode("viewTarget").getChild(0)
+                m.assertFalse(suspendedView.visible)
+                m.assertEqual(suspendedView.translation, [10000.0, 10000.0])
+            end function).toPromise()
+        end function
+
+        @it("stores the configured suspendMode on the route config")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", suspendMode: "show" }
+            ])
+            m.assertEqual(m.router@._getRoutes()["/alpha"].suspendMode, "show")
+        end function
+
+        @it("falls back to hide for an unknown suspendMode on an ordinary route")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", suspendMode: "bogus" }
+            ])
+            m.assertEqual(m.router@._getRoutes()["/alpha"].suspendMode, "hide")
+        end function
+
+        @it("falls back to detach for an unknown suspendMode on a keepAlive route")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", keepAlive: { enabled: true }, suspendMode: "bogus" }
+            ])
+            m.assertEqual(m.router@._getRoutes()["/alpha"].suspendMode, "detach")
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("detach store: keepAlive and non-keepAlive coexistence")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        ' A keepAlive view (default "detach") and an ordinary view explicitly set to "detach"
+        ' both live in the same detach store. These tests confirm they are tracked independently
+        ' and that lifecycle operations target the right one — they must not step on each other.
+
+        @async()
+        @it("goBack resumes the non-keepAlive detach view and leaves the keepAlive view in the store")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", keepAlive: { enabled: true } } ' default "detach"
+                { pattern: "/beta", component: "View", suspendMode: "detach" }          ' non-keepAlive detach
+                { pattern: "/gamma", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                ' Both /alpha (keepAlive) and /beta (non-keepAlive detach) are in the store; /gamma is active
+                m.assertEqual(m.router@._getDetachedViews().count(), 2)
+                m.assertNotInvalid(m.detachedViewByPath("/alpha"))
+                m.assertNotInvalid(m.detachedViewByPath("/beta"))
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+
+                ' goBack re-attaches the target synchronously: /beta leaves the store, /alpha stays put
+                result = sgRouter.goBack({ router: m.router })
+                m.assertTrue(result)
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+                m.assertInvalid(m.detachedViewByPath("/beta"))
+                m.assertNotInvalid(m.detachedViewByPath("/alpha"))
+                m.assertTrue(rodash.getBoolean(m.detachedViewByPath("/alpha").route.routeConfig.keepAlive, "enabled"))
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("clearStackOnResolve destroys the non-keepAlive detach view but preserves the keepAlive one")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", keepAlive: { enabled: true } } ' default "detach"
+                { pattern: "/beta", component: "View", suspendMode: "detach" }          ' non-keepAlive detach
+                { pattern: "/gamma", component: "View" }
+                { pattern: "/root", component: "View", clearStackOnResolve: true }
+            ])
+            ' Push /gamma on top of /beta so /beta is genuinely suspended in the store (not the
+            ' active view) when the stack is cleared — exercising the detached-view teardown path.
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha (keepAlive) and /beta (non-keepAlive detach) are both suspended in the store
+                m.assertEqual(m.router@._getDetachedViews().count(), 2)
+                return sgRouter.navigateTo("/root", { router: m.router })
+            end function).then(function(_, m)
+                ' /root is active; only the keepAlive /alpha survives the stack clear in the store
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+                m.assertInvalid(m.detachedViewByPath("/beta"))
+                m.assertNotInvalid(m.detachedViewByPath("/alpha"))
+                ' Navigating back to /alpha resumes the preserved keepAlive view from the store
+                ' (the store emptying confirms the stored instance was reused, not recreated)
+                return sgRouter.navigateTo("/alpha", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router@._getDetachedViews().count(), 0)
+                m.assertEqual(m.router.routerState.url, "/alpha")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("popToCheckpoint destroys non-keepAlive detach views above the target and keeps keepAlive ones")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", keepAlive: { enabled: true } }   ' default "detach"
+                { pattern: "/gamma", component: "View", suspendMode: "detach" }          ' non-keepAlive detach
+                { pattern: "/delta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                sgRouter.setCheckpoint("start", { router: m.router })
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/gamma", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/delta", { router: m.router })
+            end function).then(function(_, m)
+                ' /beta (keepAlive) and /gamma (non-keepAlive detach) are both in the store
+                m.assertEqual(m.router@._getDetachedViews().count(), 2)
+                return sgRouter.popToCheckpoint("start", { router: m.router })
+            end function).then(function(_, m)
+                ' /gamma (non-keepAlive) is destroyed; /beta (keepAlive) remains suspended
+                m.assertEqual(m.router.routerState.url, "/alpha")
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+                m.assertInvalid(m.detachedViewByPath("/gamma"))
+                m.assertNotInvalid(m.detachedViewByPath("/beta"))
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("outgoingRouteConfigOverrides")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        ' The incoming route can override the OUTGOING/suspending view's config (e.g. suspendMode)
+        ' for a single navigation — via a route config key, a navigateTo option, or the value
+        ' resolved from the incoming view's beforeViewOpen hook. /alpha defaults to "hide" (stays in
+        ' viewTarget); a "detach" override moves it into the detach store instead.
+
+        @async()
+        @it("route config outgoingRouteConfigOverrides detaches the outgoing view for that navigation")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", outgoingRouteConfigOverrides: { suspendMode: "detach" } }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' /alpha would normally "hide" (stay in viewTarget); the override forced it to detach
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+                m.assertNotInvalid(m.detachedViewByPath("/alpha"))
+                ' the shared, registered config for /alpha is untouched
+                m.assertEqual(m.router@._getRoutes()["/alpha"].suspendMode, "hide")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("beforeViewOpen-resolved outgoingRouteConfigOverrides detaches the outgoing view")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "OverridingView" } ' beforeViewOpen resolves { outgoingRouteConfigOverrides: { suspendMode: "detach" } }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+                m.assertNotInvalid(m.detachedViewByPath("/alpha"))
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("outgoingRouteConfigOverrides navigateTo option detaches the outgoing view")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router, outgoingRouteConfigOverrides: { suspendMode: "detach" } })
+            end function).then(function(_, m)
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+                m.assertNotInvalid(m.detachedViewByPath("/alpha"))
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("the outgoing override is reverted after the suspend and does not mutate the view's route config")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" }
+                { pattern: "/beta", component: "View", outgoingRouteConfigOverrides: { suspendMode: "detach" } }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' The override took effect (/alpha detached)...
+                detachedAlpha = m.detachedViewByPath("/alpha")
+                m.assertNotInvalid(detachedAlpha)
+                ' ...but it was reverted afterwards, so the view's own route config is back to "hide"
+                m.assertEqual(detachedAlpha.route.routeConfig.suspendMode, "hide")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("an invalid suspendMode override value is dropped; the outgoing view keeps its own mode")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View", suspendMode: "detach" } ' own mode: detach
+                { pattern: "/beta", component: "View", outgoingRouteConfigOverrides: { suspendMode: "bogus" } }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                ' "bogus" is dropped, so no override applies and /alpha falls back to its OWN
+                ' "detach" mode (it is detached). Had the invalid value been applied it would not
+                ' have detached — so the detach proves the bad value was rejected.
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
+                m.assertNotInvalid(m.detachedViewByPath("/alpha"))
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("an unsupported override key (keepAlive) is dropped; the outgoing view is not retained")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "View" } ' non-keepAlive
+                { pattern: "/root", component: "View", clearStackOnResolve: true, outgoingRouteConfigOverrides: { keepAlive: { enabled: true } } }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                return sgRouter.navigateTo("/root", { router: m.router })
+            end function).then(function(_, m)
+                ' If the keepAlive override were honored, /alpha would be retained in the detach
+                ' store across the stack clear. Because it is dropped, /alpha stays non-keepAlive and
+                ' is destroyed — nothing is retained.
+                m.assertEqual(m.router@._getDetachedViews().count(), 0)
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+            end function).toPromise()
+        end function
+
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        @describe("beforeViewSuspend ordering")
+        '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        ' RecordingView records each suspend hook + its visibility onto the view node's
+        ' `suspendTrace` field. beforeViewSuspend must fire while the view is still visible
+        ' (before the hide); onViewSuspend must fire after the hide (visible=false). The suspended
+        ' keepAlive view (default "detach") ends up in the detach store.
+
+        @async()
+        @it("suspendView path: beforeViewSuspend fires while visible, before onViewSuspend")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "RecordingView", keepAlive: { enabled: true } }
+                { pattern: "/beta", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                ' /alpha is the active keepAlive view and NOT in closeViews → suspendView path
+                return sgRouter.navigateTo("/beta", { router: m.router })
+            end function).then(function(_, m)
+                suspendedView = m.firstDetachedView()
+                m.assertEqual(suspendedView.suspendTrace, "beforeViewSuspend:true,onViewSuspend:false")
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("clearStackOnResolve path: beforeViewSuspend fires while visible, before onViewSuspend")
+        function _() 'bs:disable-line 1026 LINT1026
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/alpha", component: "RecordingView", keepAlive: { enabled: true } }
+                { pattern: "/root", component: "View", clearStackOnResolve: true }
+            ])
+            return promises.chain(sgRouter.navigateTo("/alpha", { router: m.router }), m).then(function(_, m)
+                ' /alpha is the active keepAlive view AND in closeViews → closeViews-loop suspend path
+                return sgRouter.navigateTo("/root", { router: m.router })
+            end function).then(function(_, m)
+                suspendedView = m.firstDetachedView()
+                m.assertEqual(suspendedView.suspendTrace, "beforeViewSuspend:true,onViewSuspend:false")
             end function).toPromise()
         end function
 
@@ -491,6 +902,40 @@ namespace tests
             end function).then(function(_, m)
                 m.assertEqual(m.router.routerState.url, "/beta")
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 2)
+            end function).toPromise()
+        end function
+
+        @async()
+        @it("pops to a checkpointed keepAlive view whose node id was reassigned by a later resume")
+        function _() 'bs:disable-line 1026 LINT1026
+            ' Regression: a keepAlive view that is resumed by a later forward navigation has its
+            ' node id reassigned (the old id is tracked in previousNodeIds). A checkpoint set on the
+            ' view's original stack entry still points at the now-stale id, so popToCheckpoint must
+            ' resolve the target via previousNodeIds rather than rejecting with "view not found".
+            m.router@._initialize({ outlet: m.outlet })
+            m.router@._addRoutes([
+                { pattern: "/home", component: "View", keepAlive: { enabled: true } }
+                { pattern: "/list", component: "View" }
+                { pattern: "/detail", component: "View" }
+            ])
+            return promises.chain(sgRouter.navigateTo("/home", { router: m.router }), m).then(function(_, m)
+                ' Checkpoint /home while it is the active view (stack entry records /home's first id)
+                sgRouter.setCheckpoint("cp", { router: m.router })
+                return sgRouter.navigateTo("/list", { router: m.router })
+            end function).then(function(_, m)
+                ' Forward-navigate back to /home: it is resumed from the detach store and its node id
+                ' is reassigned, leaving the checkpoint entry pointing at the old (now stale) id
+                return sgRouter.navigateTo("/home", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.navigateTo("/detail", { router: m.router })
+            end function).then(function(_, m)
+                return sgRouter.popToCheckpoint("cp", { router: m.router })
+            end function).then(function(_, m)
+                ' Resolves to the live /home node instead of rejecting, and unwinds /list + /detail
+                m.assertEqual(m.router.routerState.url, "/home")
+                m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
+                ' Stack is back at the checkpoint: a further goBack has nowhere to go
+                m.assertFalse(sgRouter.goBack({ router: m.router }))
             end function).toPromise()
         end function
 
@@ -774,7 +1219,7 @@ namespace tests
         end function
 
         @async()
-        @it("restores a keepAlive view from keepAliveViewTarget")
+        @it("restores a keepAlive view from the detach store")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
             m.router@._addRoutes([
@@ -786,14 +1231,14 @@ namespace tests
                 sgRouter.setCheckpoint("start", { router: m.router })
                 return sgRouter.navigateTo("/beta", { router: m.router })
             end function).then(function(_, m)
-                ' /alpha is now in keepAliveViewTarget
-                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                ' /alpha is now held in the detach store
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
                 return sgRouter.navigateTo("/gamma", { router: m.router })
             end function).then(function(_, m)
                 return sgRouter.popToCheckpoint("start", { router: m.router })
             end function).then(function(_, m)
-                ' /alpha is restored to viewTarget; keepAliveViewTarget is empty
-                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 0)
+                ' /alpha is restored to viewTarget; the detach store is empty
+                m.assertEqual(m.router@._getDetachedViews().count(), 0)
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
                 m.assertEqual(m.router.routerState.url, "/alpha")
             end function).toPromise()
@@ -814,12 +1259,12 @@ namespace tests
             end function).then(function(_, m)
                 return sgRouter.navigateTo("/gamma", { router: m.router })
             end function).then(function(_, m)
-                ' /beta is in keepAliveViewTarget
-                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                ' /beta is in the detach store
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
                 return sgRouter.popToCheckpoint("start", { router: m.router })
             end function).then(function(_, m)
-                ' /beta should remain suspended in keepAliveViewTarget, /gamma destroyed
-                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 1)
+                ' /beta should remain suspended in the detach store, /gamma destroyed
+                m.assertEqual(m.router@._getDetachedViews().count(), 1)
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
                 m.assertEqual(m.router.routerState.url, "/alpha")
             end function).toPromise()
@@ -843,12 +1288,12 @@ namespace tests
             end function).then(function(_, m)
                 return sgRouter.navigateTo("/delta", { router: m.router })
             end function).then(function(_, m)
-                ' /beta and /gamma are suspended in keepAliveViewTarget
-                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 2)
+                ' /beta and /gamma are suspended in the detach store
+                m.assertEqual(m.router@._getDetachedViews().count(), 2)
                 return sgRouter.popToCheckpoint("start", { router: m.router })
             end function).then(function(_, m)
                 ' /beta and /gamma remain suspended, /delta destroyed
-                m.assertEqual(m.outlet.findNode("keepAliveViewTarget").getChildCount(), 2)
+                m.assertEqual(m.router@._getDetachedViews().count(), 2)
                 m.assertEqual(m.outlet.findNode("viewTarget").getChildCount(), 1)
                 m.assertEqual(m.router.routerState.url, "/alpha")
             end function).toPromise()
@@ -1014,6 +1459,7 @@ namespace tests
                     "component": "View"
                     "clearstackonresolve": false
                     "keepalive": { enabled: false }
+                    "suspendmode": "hide"
                     "pattern": "/alpha"
                 }
                 "/beta": {
@@ -1022,6 +1468,7 @@ namespace tests
                     "component": "View"
                     "clearstackonresolve": false
                     "keepalive": { enabled: false }
+                    "suspendmode": "hide"
                     "pattern": "/beta"
                 }
             })

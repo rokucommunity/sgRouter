@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="RecordingView" extends="View">
+    <interface>
+        <field id="suspendTrace" type="string" value="" />
+    </interface>
+</component>

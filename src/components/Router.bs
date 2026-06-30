@@ -5,6 +5,7 @@ import "pkg:/source/router.bs"
 ' Initialize the router
 sub init()
     m.__router_activeView = Invalid
+    m.__router_detachedViews = {}
     m.__router_deviceInfo = Invalid
     m.__router_focusRequestMade = false
     m.__router_guardInstances = {}
@@ -33,7 +34,6 @@ function _initialize(params = {} as Object) as Dynamic
 
         ' Temp for now
         m.__router_viewTarget = m.__router_outlet.findNode("viewTarget")
-        m.__router_keepAliveViewTarget = m.__router_outlet.findNode("keepAliveViewTarget")
     end if
 
     return m.top
@@ -58,11 +58,15 @@ sub _destroy(_ = Invalid as Dynamic)
     m.__router_processingGoBack = false
     m.__router_routes = {}
 
+    ' Destroy any detached (suspended-out-of-tree) views still held in the store.
+    for each id in m.__router_detachedViews
+        rodash.removeNode(m.__router_detachedViews[id])
+    end for
+    m.__router_detachedViews = {}
+
     rodash.removeNodeChildren(m.__router_viewTarget)
-    rodash.removeNodeChildren(m.__router_keepAliveViewTarget)
 
     m.__router_viewTarget = Invalid
-    m.__router_keepAliveViewTarget = Invalid
 end sub
 
 ' Function to add routes to the router
@@ -77,6 +81,24 @@ sub _addRoutes(routes = [] as Object)
             clearStackOnResolve: false
             keepAlive: { enabled: false }
         }, route)
+
+        ' suspendMode governs how a suspended view is held:
+        '   "show"   - kept in the tree, rendered in place (visible, position unchanged)
+        '   "hide"   - kept in the tree but hidden and parked off-screen
+        '   "detach" - removed from the tree entirely and held in the detach store,
+        '              re-attached on resume (frees render/texture memory)
+        ' The default is keepAlive-aware: keepAlive views default to "detach" (they are
+        ' retained across stack clears, so it pays to free their render cost), while
+        ' ordinary views default to "hide". Unknown values fall back to that default.
+        defaultSuspendMode = "hide"
+        if rodash.getBoolean(merged.keepAlive, "enabled") then defaultSuspendMode = "detach"
+        if NOT rodash.isString(merged.suspendMode) then
+            merged.suspendMode = defaultSuspendMode
+        else if merged.suspendMode <> "detach" AND merged.suspendMode <> "hide" AND merged.suspendMode <> "show" then
+            print "[WARN] sgRouter: unknown suspendMode """ + rodash.getString(merged, "suspendMode") + """ for route """ + rodash.getString(merged, "pattern") + """ — falling back to """ + defaultSuspendMode + """"
+            merged.suspendMode = defaultSuspendMode
+        end if
+
         m.__router_routes[route.pattern] = merged
 
         if rodash.isNonEmptyString(merged.name) then
@@ -93,6 +115,14 @@ end sub
 ' @returns {Array} - The routes
 function _getRoutes(_ = Invalid as Dynamic) as Dynamic
     return m.__router_routes
+end function
+
+' Function to get the detached (suspended-out-of-tree) views, keyed by node id.
+' Exposed primarily so tests can inspect the detach store now that suspended
+' keepAlive / "detach" views no longer live in a SceneGraph container.
+' @returns {Object} - AA of node id -> detached view node
+function _getDetachedViews(_ = Invalid as Dynamic) as Dynamic
+    return m.__router_detachedViews
 end function
 
 ' Function to get the active route
@@ -119,34 +149,20 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     previousEntry = m.__router_historyStack[m.__router_historyStack.count() - 2]
     previousNodeId = previousEntry.nodeId
 
-    ' Search viewTarget first, then keepAliveViewTarget
-    foundView = findViewByNodeId(previousNodeId)
+    ' Resolve the previous node, tolerating a stale id: a keepAlive view can have its id reassigned
+    ' by addViewToStack on a subsequent forward navigation, leaving the history entry pointing at an
+    ' id now tracked only in the view's previousNodeIds.
+    foundView = findRetainedViewByNodeId(previousNodeId)
     viewToOpen = foundView.view
-    viewToOpenFromKeepAlive = foundView.fromKeepAlive
-    ' KeepAlive views can have their id reassigned by addViewToStack on subsequent forward navigations.
-    ' If the nodeId is stale, check previousNodeIds on each keepAlive view to find the right node.
-    if viewToOpen = Invalid then
-        for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
-            if rodash.isArray(v.previousNodeIds) then
-                for each prevId in v.previousNodeIds
-                    if prevId = previousNodeId then
-                        viewToOpen = v
-                        viewToOpenFromKeepAlive = true
-                        exit for
-                    end if
-                end for
-            end if
-            if viewToOpen <> Invalid then exit for
-        end for
-    end if
+    viewToOpenFromDetached = foundView.fromDetached
 
     if viewToOpen = Invalid then
         m.__router_processingGoBack = false
         return false
     end if
 
-    if viewToOpenFromKeepAlive then
-        viewToOpen.reparent(m.__router_viewTarget, true)
+    if viewToOpenFromDetached then
+        reattachView(viewToOpen)
     end if
 
     ' An event triggered when a navigation starts.
@@ -159,11 +175,12 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     viewToClose = m.__router_activeView
     closePromise = closeOrSuspendView(viewToClose)
 
-    promises.chain(closePromise, viewToOpen).then(sub(_ as Dynamic, view as Dynamic)
+    viewToOpenFromKeepAlive = rodash.getBoolean(viewToOpen.route.routeConfig.keepAlive, "enabled")
+    promises.chain(closePromise, { view: viewToOpen, fromKeepAlive: viewToOpenFromKeepAlive }).then(sub(_ as Dynamic, ctx as Dynamic)
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
-        _applyPopNavigationState(view)
+        _applyPopNavigationState(ctx.view, ctx.fromKeepAlive)
         m.__router_historyStack.pop()
-        showView(view, true)
+        showView(ctx.view, true)
     end sub)
 
     return true
@@ -247,11 +264,13 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
         return promises.reject({ message: "popToCheckpoint: no matching checkpoint found in history stack" })
     end if
 
-    ' Find the target view node by nodeId
+    ' Find the target view node by nodeId, tolerating a stale id (a keepAlive view that was resumed
+    ' by a later forward navigation has its current id reassigned; the checkpoint entry still points
+    ' at the old id, now tracked only in the view's previousNodeIds).
     targetNodeId = m.__router_historyStack[targetIndex].nodeId
-    foundView = findViewByNodeId(targetNodeId)
+    foundView = findRetainedViewByNodeId(targetNodeId)
     targetView = foundView.view
-    targetFromKeepAlive = foundView.fromKeepAlive
+    targetFromDetached = foundView.fromDetached
 
     if targetView = Invalid then
         m.__router_processingGoBack = false
@@ -271,9 +290,9 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
     end for
 
 
-    ' Reparent target from keepAliveViewTarget to viewTarget if needed
-    if targetFromKeepAlive then
-        targetView.reparent(m.__router_viewTarget, true)
+    ' Re-attach the target to viewTarget if it was detached
+    if targetFromDetached then
+        reattachView(targetView)
     end if
 
     ' Dispatch NavigationStart
@@ -285,15 +304,26 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
     ' Set the new stack after the NavigationStart event in case any listeners read from the stack (e.g. for analytics)
     m.__router_historyStack = newStack
 
-    ' Close or suspend views above the target (keepAlive views already in keepAliveViewTarget are left as-is)
+    ' Close or suspend in-tree views above the target. Skip the target itself: when a keepAlive
+    ' target was resumed by a later forward navigation, that resume left a newer history entry above
+    ' the checkpoint whose nodeId is the target's current (live) id — so the target's own id can
+    ' appear in nodeIdsToClose, and it must not be closed.
     closePromises = []
     for each v in rodash.getNodeChildren(m.__router_viewTarget)
-        if nodeIdsToClose[v.id] = true then
+        if nodeIdsToClose[v.id] = true AND v.id <> targetView.id then
             closePromises.push(closeOrSuspendView(v))
         end if
     end for
 
-    return promises.chain(promises.all(closePromises), { targetView: targetView, targetFromKeepAlive: targetFromKeepAlive }).then(function(_ as Dynamic, ctx as Dynamic) as Dynamic
+    ' Destroy detached views above the target unless they are marked keepAlive.
+    ' keepAlive detached views remain suspended in the detach store.
+    for each v in collectDetachedViewsToDestroy(nodeIdsToClose)
+        m.__router_detachedViews.delete(v.id)
+        closePromises.push(closeView(v))
+    end for
+
+    targetKeepAlive = rodash.getBoolean(targetView.route.routeConfig.keepAlive, "enabled")
+    return promises.chain(promises.all(closePromises), { targetView: targetView, targetFromKeepAlive: targetKeepAlive }).then(function(_ as Dynamic, ctx as Dynamic) as Dynamic
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
         _applyPopNavigationState(ctx.targetView, ctx.targetFromKeepAlive)
         return showView(ctx.targetView, true)
@@ -326,6 +356,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
     end if
 
     routeConfigOverrides = rodash.getAA(options, "routeConfigOverrides")
+    outgoingRouteConfigOverrides = rodash.getAA(options, "outgoingRouteConfigOverrides")
     navigationState = rodash.getAA(options, "navigationState")
     context = rodash.getAA(options, "context")
 
@@ -388,7 +419,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
     })
 
     'sleep until next tick, then continue work
-    return promises.chain(promises.resolve(Invalid), { newRoute: newRoute }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
+    return promises.chain(promises.resolve(Invalid), { newRoute: newRoute, outgoingRouteConfigOverrides: outgoingRouteConfigOverrides }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
         return runGuardChecks(internalContext.newRoute)
     end function).then(function(guardCheckResponse as Dynamic, internalContext as Dynamic) as Dynamic
         if NOT guardCheckResponse.allow then
@@ -461,6 +492,11 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
                         for each view in rodash.getNodeChildren(m.__router_viewTarget)
                             viewsToRemoveOnResolve.push(view)
                         end for
+                        ' Detached non-keepAlive views must also be torn down on a stack clear;
+                        ' detached keepAlive views are retained (left in the store, untouched).
+                        for each detachedView in collectDetachedViewsToDestroy()
+                            viewsToRemoveOnResolve.push(detachedView)
+                        end for
                     end if
                 end if
             end if
@@ -470,7 +506,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
                 fromPushState: true
             })
 
-            return addViewToStack(newRoute, viewsToRemoveOnResolve)
+            return addViewToStack(newRoute, viewsToRemoveOnResolve, internalContext.outgoingRouteConfigOverrides)
         end if
 
         message = { message: `Route "${newRoute.path}" not found` }
@@ -624,30 +660,29 @@ end function
 ' @param {Dynamic} route - The route to add to the view stack
 ' @param {Array} closeViews - The views to close/suspend
 ' @returns {Dynamic} - The result of the view stack management
-function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
+function addViewToStack(route as Dynamic, closeViews = [] as Object, outgoingRouteConfigOverrides = {} as Object) as Dynamic
     ' An event triggered at the start of the Resolve phase of routing.
     dispatchRouterState(RouterState.ResolveStart, {
         id: route.id
         route: route
     })
 
-    ' Look for a cached keepAlive view (stable key ignores query-string differences)
-    keepAliveView = Invalid
-
-    for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
-        if v.route.path = route.path then
-            keepAliveView = v
-
-            route.navigationState = rodash.merge(route.navigationState, {
-                fromKeepAlive: true
-            })
-            exit for
-        end if
-    end for
+    ' Look for a cached keepAlive view to resume (stable key ignores query-string differences).
+    ' A suspended keepAlive view may be held in the detach store ("detach" mode) or hidden in
+    ' viewTarget ("hide"/"show" mode); either way it is resumed rather than recreated.
+    keepAliveView = findSuspendedKeepAliveView(route.path)
+    if keepAliveView <> Invalid then
+        route.navigationState = rodash.merge(route.navigationState, {
+            fromKeepAlive: true
+        })
+    end if
 
     toResolve = Invalid
     if keepAliveView <> Invalid then
         view = keepAliveView
+        ' If it was detached, drop the stale store entry (keyed by the old id) now; the view is
+        ' re-attached to viewTarget below.
+        m.__router_detachedViews.delete(view.id)
         ' Track previous ids so stale historyStack entries can still find this node after the id changes.
         ' Cap the array to the history stack length: no stale entry older than the stack can ever be
         ' looked up, so entries beyond that count are unreachable and can be discarded.
@@ -681,12 +716,49 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         toResolve = view@._beforeViewOpen({ route: route })
     end if
 
-    return promises.chain(toResolve, { view: view, closeViews: closeViews, fromKeepAlive: keepAliveView <> Invalid }).then(function(_ as Dynamic, internalContext as Dynamic) as Dynamic
+    ' Combine navigation-level outgoing-route overrides (applied to the outgoing/suspending view
+    ' for this navigation only): the incoming route config's outgoingRouteConfigOverrides first, then any
+    ' per-navigation override passed via navigateTo options. The incoming view's beforeViewOpen
+    ' resolution (handled in the chain below) takes precedence over both.
+    ' The merged override is sanitized down to the single supported field (suspendMode) and carried
+    ' through the promise chain as a plain string rather than a nested AA: nested associative arrays
+    ' do not reliably survive marshalling through the promise context, whereas strings do.
+    navOutgoingOverrides = {}
+    if rodash.isNonEmptyAA(route.routeConfig.outgoingRouteConfigOverrides) then
+        navOutgoingOverrides = rodash.merge(navOutgoingOverrides, route.routeConfig.outgoingRouteConfigOverrides)
+    end if
+    if rodash.isNonEmptyAA(outgoingRouteConfigOverrides) then
+        navOutgoingOverrides = rodash.merge(navOutgoingOverrides, outgoingRouteConfigOverrides)
+    end if
+    navOutgoingSuspendMode = rodash.getString(sanitizeOutgoingRouteConfigOverrides(navOutgoingOverrides), "suspendMode")
+
+    ' Snapshot the outgoing view's route config so the per-navigation override applied below can be
+    ' reverted once the suspend completes — the override is for this navigation only and must not
+    ' persist on a view that is later resumed (e.g. via goBack).
+    outgoingView = m.__router_activeView
+    originalOutgoingConfig = Invalid
+    if rodash.isNode(outgoingView) then originalOutgoingConfig = rodash.clone(outgoingView.route.routeConfig)
+
+    return promises.chain(toResolve, { view: view, closeViews: closeViews, fromKeepAlive: keepAliveView <> Invalid, navOutgoingSuspendMode: navOutgoingSuspendMode, outgoingView: outgoingView, originalOutgoingConfig: originalOutgoingConfig }).then(function(beforeOpenResult as Dynamic, internalContext as Dynamic) as Dynamic
         view = internalContext.view
 
         ' Ensure the view is in the visible stack (and reparent if it was previously suspended)
         m.__router_viewTarget.appendChild(view)
         view.reparent(m.__router_viewTarget, true)
+
+        ' Apply outgoing-route overrides to the outgoing (currently active) view for THIS
+        ' navigation only — e.g. so the incoming route can force the outgoing view to suspend with
+        ' a different suspendMode. The incoming view's beforeViewOpen resolution wins over the
+        ' navigation-level overrides. This mutates only the per-navigation outgoing route node (not
+        ' the shared route config registered via addRoutes) and is reverted once the suspend ends.
+        outgoingSuspendMode = internalContext.navOutgoingSuspendMode
+        if rodash.isAA(beforeOpenResult) AND rodash.isNonEmptyAA(beforeOpenResult.outgoingRouteConfigOverrides) then
+            beforeOpenSuspendMode = rodash.getString(sanitizeOutgoingRouteConfigOverrides(beforeOpenResult.outgoingRouteConfigOverrides), "suspendMode")
+            if rodash.isNonEmptyString(beforeOpenSuspendMode) then outgoingSuspendMode = beforeOpenSuspendMode
+        end if
+        if rodash.isNonEmptyString(outgoingSuspendMode) AND rodash.isNode(internalContext.outgoingView) then
+            applyOutgoingRouteConfigOverrides(internalContext.outgoingView, { suspendMode: outgoingSuspendMode })
+        end if
 
         ' Determine whether the active view is in the closeViews list.
         isActiveInCloseViews = false
@@ -703,27 +775,31 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         promisesToResolve = []
 
         ' Handle the active view:
-        ' - keepAlive AND not in closeViews: suspend and move to keepAliveViewTarget (awaited)
-        ' - in closeViews: just hide; lifecycle is handled by the closeViews loop below
-        ' - otherwise: hide and fire onViewSuspend
-        if m.__router_activeView <> Invalid then
-            if NOT isActiveInCloseViews AND rodash.getBoolean(m.__router_activeView.route.routeConfig.keepAlive, "enabled") then
-                promisesToResolve.push(suspendView(m.__router_activeView))
-            else
-                hideView(m.__router_activeView, NOT isActiveInCloseViews)
-            end if
+        ' - in closeViews: its lifecycle is owned by the closeViews loop below. The view stays
+        '   visible so _beforeViewClose (or _beforeViewSuspend for keepAlive) runs against a
+        '   visible view; hide/destroy happens in the post-showView loop in the next .then().
+        ' - otherwise: run the suspend lifecycle (awaited so the new view is not shown until
+        '   the old view's _beforeViewSuspend resolves). Final placement follows suspendMode:
+        '   "detach" views move into the detach store; "hide"/"show" views stay in viewTarget.
+        if m.__router_activeView <> Invalid AND NOT isActiveInCloseViews then
+            promisesToResolve.push(suspendView(m.__router_activeView))
         end if
 
         ' Close or suspend views in closeViews.
-        ' For keepAlive views: only call _onViewSuspend if this view IS the active view (first suspension).
-        ' Non-active keepAlive views are already in keepAliveViewTarget from prior forward navigation.
+        ' For keepAlive views: only run the suspend lifecycle if this view IS the active view
+        ' (first suspension). Non-active keepAlive views are already suspended (in the detach store
+        ' or hidden in viewTarget) from prior forward navigation. The hide runs after
+        ' _beforeViewSuspend so an exit transition sees the view while it is still visible.
         if rodash.isNonEmptyArray(internalContext.closeViews) then
             for each cv in internalContext.closeViews
                 params = { route: cv.route }
 
                 if rodash.getBoolean(cv.route.routeConfig.keepAlive, "enabled") then
                     if m.__router_activeView <> Invalid AND cv.id = m.__router_activeView.id then
-                        promisesToResolve.push(cv@._onViewSuspend(params))
+                        promisesToResolve.push(promises.onThen(cv@._beforeViewSuspend(params), function(_ as Dynamic, ctx as Dynamic) as Dynamic
+                            hideView(ctx.view)
+                            return ctx.view@._onViewSuspend({ route: ctx.view.route })
+                        end function, { view: cv }))
                     end if
                 else
                     promisesToResolve.push(cv@._beforeViewClose(params))
@@ -749,34 +825,49 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object) as Dynamic
         return showView(internalContext.view, internalContext.fromKeepAlive)
     end function).then(function(response as Dynamic, internalContext as Dynamic) as Dynamic
         ' Remove/suspend views after the new view is visible.
-        ' keepAlive: reparent synchronously (_onViewSuspend already called above).
+        ' keepAlive: apply final suspend placement — "detach" views move into the detach store,
+        '   "hide"/"show" views stay hidden in viewTarget (_onViewSuspend already called above).
         ' non-keepAlive: destroy.
         if rodash.isNonEmptyArray(internalContext.closeViews) then
             for each cv in internalContext.closeViews
                 if rodash.getBoolean(cv.route.routeConfig.keepAlive, "enabled") then
-                    hideView(cv, false)
-                    cv.reparent(m.__router_keepAliveViewTarget, true)
+                    finalizeSuspendPlacement(cv)
                 else
-                    if hideView(cv, false) then rodash.removeNode(cv)
+                    ' Drop any stale detach-store entry before destroying (a no-op for in-tree views).
+                    m.__router_detachedViews.delete(cv.id)
+                    if hideView(cv) then rodash.removeNode(cv)
                 end if
             end for
         end if
 
+        ' Revert the per-navigation outgoing-route override now that the suspend (which reads the
+        ' overridden suspendMode/keepAlive) has completed, so it does not leak onto a retained view's
+        ' route config beyond this navigation. A no-op when no override was applied.
+        if rodash.isNode(internalContext.outgoingView) AND rodash.isAA(internalContext.originalOutgoingConfig) then
+            internalContext.outgoingView.route.routeConfig = internalContext.originalOutgoingConfig
+        end if
+
         return response
     end function).catch(function(error as Dynamic) as Dynamic
+        ' Ensure per-navigation outgoing overrides never leak if a lifecycle rejects mid-navigation.
+        if rodash.isNode(outgoingView) AND rodash.isAA(originalOutgoingConfig) then
+            outgoingView.route.routeConfig = originalOutgoingConfig
+        end if
         return promises.reject(error)
     end function).toPromise()
 end function
 
-' Function to close a view
+' Runs the close lifecycle for a view: _beforeViewClose (while still visible, e.g. an exit
+' animation) -> remove the node. The view is left visible during _beforeViewClose — mirroring
+' suspendView and the forward-nav close path — and is destroyed once the hook resolves, so
+' there is no point hiding it first.
 ' @param {Dynamic} view - The view to close
-' @returns {Dynamic} - The result of the view close
+' @returns {Dynamic} - A promise that resolves once the view has been closed
 function closeView(view = Invalid as Dynamic) as Dynamic
-    view.translation = [1000000, 100000]
-    view.visible = false
+    if NOT rodash.isNode(view) then return promises.reject({ message: "Invalid view" })
 
     return promises.onThen(view@._beforeViewClose({ route: view.route }), function(_ as Dynamic, internalContext as Dynamic) as Dynamic
-        if hideView(internalContext.view, false) then
+        if rodash.isNode(internalContext.view) then
             rodash.removeNode(internalContext.view)
         end if
 
@@ -784,21 +875,123 @@ function closeView(view = Invalid as Dynamic) as Dynamic
     end function, { view: view })
 end function
 
-' Function to suspend a view (keepAlive)
+' Runs the suspend lifecycle for a view: _beforeViewSuspend (view still visible, e.g. exit
+' animation) -> hide -> _onViewSuspend -> final placement. The returned promise resolves only
+' after the view's own _beforeViewSuspend promise resolves, so callers can await it before
+' showing the next view. Final placement follows suspendMode: "detach" views are removed from
+' the tree into the detach store; "hide"/"show" views remain in viewTarget for goBack.
 ' @param {Dynamic} view - The view to suspend
-' @returns {Dynamic} - The result of the view suspend
+' @returns {Dynamic} - A promise that resolves once the suspend lifecycle has completed
 function suspendView(view = Invalid as Dynamic) as Dynamic
     if NOT rodash.isNode(view) then return promises.reject({ message: "Invalid view" })
 
-    view.visible = false
-    view.translation = [10000, 10000]
+    return promises.onThen(view@._beforeViewSuspend({ route: view.route }), function(_ as Dynamic, ctx as Dynamic) as Dynamic
+        hideView(ctx.view)
 
-    return promises.onThen(view@._onViewSuspend({ route: view.route }), function(_ as Dynamic, ctx as Dynamic) as Dynamic
-        hideView(ctx.view, false)
-        ctx.view.reparent(m.__router_keepAliveViewTarget, true)
-        return true
+        return promises.onThen(ctx.view@._onViewSuspend({ route: ctx.view.route }), function(_ as Dynamic, suspendCtx as Dynamic) as Dynamic
+            finalizeSuspendPlacement(suspendCtx.view)
+            return true
+        end function, { view: ctx.view })
     end function, { view: view })
 end function
+
+' Applies the final resting place for a suspended view based on its suspendMode. For "detach"
+' the node is removed from the tree and held in the detach store; for "hide"/"show" the node
+' stays in viewTarget (hideView has already applied its visibility). Safe to call more than
+' once for the same view (detaching an already-detached node is a no-op).
+' @param {Object} view - The suspended view to place
+sub finalizeSuspendPlacement(view as Object)
+    if rodash.isNode(view) AND view.route.routeConfig.suspendMode = "detach" then
+        detachView(view)
+    end if
+end sub
+
+' Removes a view from the SceneGraph tree and holds it in the detach store keyed by node id,
+' so it can be re-attached on resume (goBack / popToCheckpoint / forward nav to a keepAlive
+' route). Detached views render nothing and consume no texture memory while suspended.
+' @param {Object} view - The view to detach
+sub detachView(view as Object)
+    if rodash.isNode(view) then
+        view.visible = false
+        m.__router_detachedViews[view.id] = view
+        parent = view.getParent()
+        if rodash.isNode(parent) then parent.removeChild(view)
+    end if
+end sub
+
+' Re-attaches a detached view to viewTarget and clears it from the detach store. No-op for a
+' view that is not currently detached.
+' @param {Object} view - The view to re-attach
+sub reattachView(view as Object)
+    if rodash.isNode(view) then
+        m.__router_detachedViews.delete(view.id)
+        m.__router_viewTarget.appendChild(view)
+        view.reparent(m.__router_viewTarget, true)
+    end if
+end sub
+
+' Collects the detached (suspended-out-of-tree) views that must be torn down rather than retained:
+' i.e. the non-keepAlive ones. keepAlive detached views are always retained (left in the store).
+' When nodeIdFilter is a non-empty AA of nodeId -> true, only detached views whose id is in the
+' filter are returned (e.g. those above a popToCheckpoint target); pass Invalid to return all
+' non-keepAlive detached views (e.g. on a clearStackOnResolve stack clear). Returns a fresh array,
+' so callers may safely delete from the detach store while iterating the result.
+' @param {Object} nodeIdFilter - Optional AA of node ids to restrict to, or Invalid for all
+' @returns {Object} - Array of detached view nodes to destroy
+function collectDetachedViewsToDestroy(nodeIdFilter = Invalid as Object) as Object
+    toDestroy = []
+    hasFilter = rodash.isAA(nodeIdFilter)
+    for each id in m.__router_detachedViews
+        v = m.__router_detachedViews[id]
+        if rodash.isNode(v) AND NOT rodash.getBoolean(v.route.routeConfig.keepAlive, "enabled") then
+            if NOT hasFilter OR nodeIdFilter[v.id] = true then
+                toDestroy.push(v)
+            end if
+        end if
+    end for
+    return toDestroy
+end function
+
+' Restricts the fields an incoming route may override on the outgoing/suspending view. Only
+' suspendMode is supported today — keeping the surface small avoids overriding fields that are
+' unsafe to change on a view that is already mounted and suspending (e.g. keepAlive, canActivate).
+' Returns a new AA containing only supported, valid entries; unsupported keys and invalid values
+' are dropped with a warning.
+' @param {Object} overrides - The raw, merged outgoing-route overrides for this navigation
+' @returns {Object} - The sanitized overrides safe to apply
+function sanitizeOutgoingRouteConfigOverrides(overrides as Object) as Object
+    sanitized = {}
+    if NOT rodash.isAA(overrides) then return sanitized
+
+    ' Keys are matched case-insensitively: an override that arrives via callFunc / a SceneGraph
+    ' node field has its AA keys lowercased (e.g. "suspendMode" -> "suspendmode").
+    for each key in overrides
+        if LCase(key) = "suspendmode" then
+            value = overrides[key]
+            if value = "detach" OR value = "hide" OR value = "show" then
+                sanitized.suspendMode = value
+            else
+                print "[WARN] sgRouter: ignoring invalid outgoingRouteConfigOverrides.suspendMode — expected ""detach"", ""hide"" or ""show"""
+            end if
+        else
+            print "[WARN] sgRouter: ignoring unsupported outgoingRouteConfigOverrides key """ + key + """ — only ""suspendMode"" can be overridden"
+        end if
+    end for
+
+    return sanitized
+end function
+
+' Merges per-navigation overrides into a view's route config. Used to override the outgoing/
+' suspending view's config (e.g. suspendMode) for a single navigation. The override is applied to
+' the view's own per-navigation route node, so the shared route config registered via addRoutes is
+' left untouched.
+' @param {Object} view - The outgoing view whose route config should be overridden
+' @param {Object} overrides - The route config fields to override for this navigation
+sub applyOutgoingRouteConfigOverrides(view as Object, overrides as Object)
+    if rodash.isNode(view) AND rodash.isNode(view.route) then
+        view.route.routeConfig = rodash.merge(view.route.routeConfig, overrides)
+    end if
+end sub
 
 ' Closes or suspends a view depending on whether its route has keepAlive enabled.
 function closeOrSuspendView(view as Object) as Dynamic
@@ -808,17 +1001,24 @@ function closeOrSuspendView(view as Object) as Dynamic
     return closeView(view)
 end function
 
-' Tells the view to hide and fire the onViewSuspend lifecycle method if onSuspend is true
+' Applies the in-place visibility for a suspended view according to its route's suspendMode.
+' Pure visibility toggle: the suspend lifecycle hooks (_beforeViewSuspend / _onViewSuspend) are
+' owned by suspendView, and removal-from-tree for "detach" is owned by finalizeSuspendPlacement.
+' suspendMode:
+'   "show"   - left rendered in place (visible, position unchanged)
+'   "hide"   - hidden and moved off-screen (the default for ordinary views)
+'   "detach" - hidden here (and moved off-screen) ahead of being removed from the tree; also
+'              the fallback for any unrecognized value, so the view is never left on-screen
 ' @param {Object} view - The view to hide
-' @param {Boolean} onSuspend - Whether to fire the onViewSuspend lifecycle method
-function hideView(view as Object, onSuspend = false as Boolean) as Boolean
+function hideView(view as Object) as Boolean
     success = rodash.isNode(view)
     if success then
-        view.visible = false
-        view.translation = [10000, 10000]
-
-        if onSuspend then
-            view@._onViewSuspend({ route: view.route })
+        suspendMode = view.route.routeConfig.suspendMode
+        view.visible = suspendMode = "show"
+        ' Park off-screen for everything except "show" — unknown/Invalid values are treated
+        ' like "detach"/"hide" so a suspended view is never left rendered on-screen by mistake.
+        if suspendMode <> "show" then
+            view.translation = [10000, 10000]
         end if
     end if
     return success
@@ -919,16 +1119,67 @@ sub _applyPopNavigationState(view as Object, fromKeepAlive = false as Boolean)
     })
 end sub
 
-' Searches viewTarget then keepAliveViewTarget for a view with the given node ID.
-' Returns { view: node, fromKeepAlive: Boolean } — view is Invalid if not found.
+' Searches viewTarget then the detach store for a view with the given node ID.
+' Returns { view: node, fromDetached: Boolean } — view is Invalid if not found.
+' fromDetached indicates the node is out of the tree and must be re-attached before showing.
 function findViewByNodeId(nodeId as String) as Object
     for each v in rodash.getNodeChildren(m.__router_viewTarget)
-        if v.id = nodeId then return { view: v, fromKeepAlive: false }
+        if v.id = nodeId then return { view: v, fromDetached: false }
     end for
-    for each v in rodash.getNodeChildren(m.__router_keepAliveViewTarget)
-        if v.id = nodeId then return { view: v, fromKeepAlive: true }
+    if rodash.isNode(m.__router_detachedViews[nodeId]) then
+        return { view: m.__router_detachedViews[nodeId], fromDetached: true }
+    end if
+    return { view: Invalid, fromDetached: false }
+end function
+
+' Resolves a (possibly stale) history nodeId to a retained view node. Tries an exact id match
+' first (findViewByNodeId); if that misses, a keepAlive view may have had its id reassigned by a
+' later forward navigation (the old id is recorded in previousNodeIds), so it falls back to
+' matching the id against each retained view's previousNodeIds — in the detach store first, then
+' in viewTarget. Returns { view: node, fromDetached: Boolean }; view is Invalid if none match.
+function findRetainedViewByNodeId(nodeId as String) as Object
+    found = findViewByNodeId(nodeId)
+    if found.view <> Invalid then return found
+
+    for each id in m.__router_detachedViews
+        v = m.__router_detachedViews[id]
+        if rodash.isNode(v) AND matchesPreviousNodeId(v, nodeId) then return { view: v, fromDetached: true }
     end for
-    return { view: Invalid, fromKeepAlive: false }
+    for each v in rodash.getNodeChildren(m.__router_viewTarget)
+        if matchesPreviousNodeId(v, nodeId) then return { view: v, fromDetached: false }
+    end for
+    return { view: Invalid, fromDetached: false }
+end function
+
+' Returns true if the view's previousNodeIds array contains the given (now-stale) node id.
+function matchesPreviousNodeId(view as Object, nodeId as String) as Boolean
+    if rodash.isArray(view.previousNodeIds) then
+        for each prevId in view.previousNodeIds
+            if prevId = nodeId then return true
+        end for
+    end if
+    return false
+end function
+
+' Finds a suspended keepAlive view matching the given path so forward navigation can resume it
+' rather than recreating it. Searches the detach store ("detach" mode) first, then keepAlive
+' views still parked hidden in viewTarget ("hide"/"show" mode). Skips the active view. Returns
+' Invalid if none match.
+function findSuspendedKeepAliveView(path as String) as Object
+    for each id in m.__router_detachedViews
+        v = m.__router_detachedViews[id]
+        if rodash.isNode(v) AND rodash.getBoolean(v.route.routeConfig.keepAlive, "enabled") AND v.route.path = path then
+            return v
+        end if
+    end for
+    for each v in rodash.getNodeChildren(m.__router_viewTarget)
+        if rodash.getBoolean(v.route.routeConfig.keepAlive, "enabled") AND v.route.path = path then
+            if m.__router_activeView = Invalid OR v.id <> m.__router_activeView.id then
+                return v
+            end if
+        end if
+    end for
+    return Invalid
 end function
 
 ' Resolve a named route to a literal path string.

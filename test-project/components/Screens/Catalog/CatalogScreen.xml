@@ -5,7 +5,14 @@
 	</interface>
 
 	<children>
-		<Label id="label" translation="[196, 96]" />
-		<RowList id="rowList" translation="[196, 196]" />
+		<Group id="container" opacity="0">
+			<Label id="label" translation="[196, 96]" />
+			<RowList id="rowList" translation="[196, 196]" />
+		</Group>
+
+		<Animation id="fadeAnimation" duration="2" easeFunction="outQuad">
+			<FloatFieldInterpolator id="fadeInInterpolator" key="[0, 1]"
+				fieldToInterp="container.opacity" />
+		</Animation>
 	</children>
 </component>
