@@ -330,8 +330,8 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
         end if
     end for
 
-    ' Detached views above the target: keepAlive views stay suspended in the store (left as-is);
-    ' non-keepAlive detached views are destroyed so they do not leak.
+    ' Delete detached views above the target unless they are marked keepAlive.
+    ' keepAlive detached views remain suspended in the detach store.
     detachedToClose = []
     for each id in m.__router_detachedViews
         v = m.__router_detachedViews[id]
