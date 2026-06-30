@@ -195,11 +195,12 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     viewToClose = m.__router_activeView
     closePromise = closeOrSuspendView(viewToClose)
 
-    promises.chain(closePromise, viewToOpen).then(sub(_ as Dynamic, view as Dynamic)
+    viewToOpenFromKeepAlive = rodash.getBoolean(viewToOpen.route.routeConfig.keepAlive, "enabled")
+    promises.chain(closePromise, { view: viewToOpen, fromKeepAlive: viewToOpenFromKeepAlive }).then(sub(_ as Dynamic, ctx as Dynamic)
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
-        _applyPopNavigationState(view)
+        _applyPopNavigationState(ctx.view, ctx.fromKeepAlive)
         m.__router_historyStack.pop()
-        showView(view, true)
+        showView(ctx.view, true)
     end sub)
 
     return true
@@ -744,6 +745,9 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object, outgoingRou
     ' for this navigation only): the incoming route config's outgoingRouteConfigOverrides first, then any
     ' per-navigation override passed via navigateTo options. The incoming view's beforeViewOpen
     ' resolution (handled in the chain below) takes precedence over both.
+    ' The merged override is sanitized down to the single supported field (suspendMode) and carried
+    ' through the promise chain as a plain string rather than a nested AA: nested associative arrays
+    ' do not reliably survive marshalling through the promise context, whereas strings do.
     navOutgoingOverrides = {}
     if rodash.isNonEmptyAA(route.routeConfig.outgoingRouteConfigOverrides) then
         navOutgoingOverrides = rodash.merge(navOutgoingOverrides, route.routeConfig.outgoingRouteConfigOverrides)
@@ -751,6 +755,7 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object, outgoingRou
     if rodash.isNonEmptyAA(outgoingRouteConfigOverrides) then
         navOutgoingOverrides = rodash.merge(navOutgoingOverrides, outgoingRouteConfigOverrides)
     end if
+    navOutgoingSuspendMode = rodash.getString(sanitizeOutgoingRouteConfigOverrides(navOutgoingOverrides), "suspendMode")
 
     ' Snapshot the outgoing view's route config so the per-navigation override applied below can be
     ' reverted once the suspend completes — the override is for this navigation only and must not
@@ -759,7 +764,7 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object, outgoingRou
     originalOutgoingConfig = Invalid
     if rodash.isNode(outgoingView) then originalOutgoingConfig = rodash.clone(outgoingView.route.routeConfig)
 
-    return promises.chain(toResolve, { view: view, closeViews: closeViews, fromKeepAlive: keepAliveView <> Invalid, navOutgoingOverrides: navOutgoingOverrides, outgoingView: outgoingView, originalOutgoingConfig: originalOutgoingConfig }).then(function(beforeOpenResult as Dynamic, internalContext as Dynamic) as Dynamic
+    return promises.chain(toResolve, { view: view, closeViews: closeViews, fromKeepAlive: keepAliveView <> Invalid, navOutgoingSuspendMode: navOutgoingSuspendMode, outgoingView: outgoingView, originalOutgoingConfig: originalOutgoingConfig }).then(function(beforeOpenResult as Dynamic, internalContext as Dynamic) as Dynamic
         view = internalContext.view
 
         ' Ensure the view is in the visible stack (and reparent if it was previously suspended)
@@ -771,14 +776,13 @@ function addViewToStack(route as Dynamic, closeViews = [] as Object, outgoingRou
         ' a different suspendMode. The incoming view's beforeViewOpen resolution wins over the
         ' navigation-level overrides. This mutates only the per-navigation outgoing route node (not
         ' the shared route config registered via addRoutes) and is reverted once the suspend ends.
-        outgoingOverrides = internalContext.navOutgoingOverrides
+        outgoingSuspendMode = internalContext.navOutgoingSuspendMode
         if rodash.isAA(beforeOpenResult) AND rodash.isNonEmptyAA(beforeOpenResult.outgoingRouteConfigOverrides) then
-            outgoingOverrides = rodash.merge(outgoingOverrides, beforeOpenResult.outgoingRouteConfigOverrides)
+            beforeOpenSuspendMode = rodash.getString(sanitizeOutgoingRouteConfigOverrides(beforeOpenResult.outgoingRouteConfigOverrides), "suspendMode")
+            if rodash.isNonEmptyString(beforeOpenSuspendMode) then outgoingSuspendMode = beforeOpenSuspendMode
         end if
-        ' Restrict overrides to the supported surface (suspendMode only) before applying.
-        outgoingOverrides = sanitizeOutgoingRouteConfigOverrides(outgoingOverrides)
-        if rodash.isNonEmptyAA(outgoingOverrides) AND rodash.isNode(internalContext.outgoingView) then
-            applyOutgoingRouteConfigOverrides(internalContext.outgoingView, outgoingOverrides)
+        if rodash.isNonEmptyString(outgoingSuspendMode) AND rodash.isNode(internalContext.outgoingView) then
+            applyOutgoingRouteConfigOverrides(internalContext.outgoingView, { suspendMode: outgoingSuspendMode })
         end if
 
         ' Determine whether the active view is in the closeViews list.
@@ -962,8 +966,10 @@ function sanitizeOutgoingRouteConfigOverrides(overrides as Object) as Object
     sanitized = {}
     if NOT rodash.isAA(overrides) then return sanitized
 
+    ' Keys are matched case-insensitively: an override that arrives via callFunc / a SceneGraph
+    ' node field has its AA keys lowercased (e.g. "suspendMode" -> "suspendmode").
     for each key in overrides
-        if key = "suspendMode" then
+        if LCase(key) = "suspendmode" then
             value = overrides[key]
             if value = "detach" OR value = "hide" OR value = "show" then
                 sanitized.suspendMode = value
