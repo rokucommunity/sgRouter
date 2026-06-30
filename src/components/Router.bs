@@ -330,16 +330,9 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
         end if
     end for
 
-    ' Delete detached views above the target unless they are marked keepAlive.
+    ' Destroy detached views above the target unless they are marked keepAlive.
     ' keepAlive detached views remain suspended in the detach store.
-    detachedToClose = []
-    for each id in m.__router_detachedViews
-        v = m.__router_detachedViews[id]
-        if rodash.isNode(v) AND nodeIdsToClose[v.id] = true AND NOT rodash.getBoolean(v.route.routeConfig.keepAlive, "enabled") then
-            detachedToClose.push(v)
-        end if
-    end for
-    for each v in detachedToClose
+    for each v in collectDetachedViewsToDestroy(nodeIdsToClose)
         m.__router_detachedViews.delete(v.id)
         closePromises.push(closeView(v))
     end for
@@ -516,11 +509,8 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
                         end for
                         ' Detached non-keepAlive views must also be torn down on a stack clear;
                         ' detached keepAlive views are retained (left in the store, untouched).
-                        for each id in m.__router_detachedViews
-                            detachedView = m.__router_detachedViews[id]
-                            if rodash.isNode(detachedView) AND NOT rodash.getBoolean(detachedView.route.routeConfig.keepAlive, "enabled") then
-                                viewsToRemoveOnResolve.push(detachedView)
-                            end if
+                        for each detachedView in collectDetachedViewsToDestroy()
+                            viewsToRemoveOnResolve.push(detachedView)
                         end for
                     end if
                 end if
@@ -954,6 +944,28 @@ sub reattachView(view as Object)
         view.reparent(m.__router_viewTarget, true)
     end if
 end sub
+
+' Collects the detached (suspended-out-of-tree) views that must be torn down rather than retained:
+' i.e. the non-keepAlive ones. keepAlive detached views are always retained (left in the store).
+' When nodeIdFilter is a non-empty AA of nodeId -> true, only detached views whose id is in the
+' filter are returned (e.g. those above a popToCheckpoint target); pass Invalid to return all
+' non-keepAlive detached views (e.g. on a clearStackOnResolve stack clear). Returns a fresh array,
+' so callers may safely delete from the detach store while iterating the result.
+' @param {Object} nodeIdFilter - Optional AA of node ids to restrict to, or Invalid for all
+' @returns {Object} - Array of detached view nodes to destroy
+function collectDetachedViewsToDestroy(nodeIdFilter = Invalid as Object) as Object
+    toDestroy = []
+    hasFilter = rodash.isAA(nodeIdFilter)
+    for each id in m.__router_detachedViews
+        v = m.__router_detachedViews[id]
+        if rodash.isNode(v) AND NOT rodash.getBoolean(v.route.routeConfig.keepAlive, "enabled") then
+            if NOT hasFilter OR nodeIdFilter[v.id] = true then
+                toDestroy.push(v)
+            end if
+        end if
+    end for
+    return toDestroy
+end function
 
 ' Restricts the fields an incoming route may override on the outgoing/suspending view. Only
 ' suspendMode is supported today — keeping the surface small avoids overriding fields that are
