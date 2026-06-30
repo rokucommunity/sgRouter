@@ -652,6 +652,16 @@ promises.chain(sgRouter.popToCheckpoint("checkout-start"), m)
 ```
 
 ---
+## 🏗️ Architecture & Internals
+
+This README covers **how to use** sgRouter. For **how it works internally** — the navigation
+pipeline, view-suspension model, state structures, lifecycle ordering, and invariants — see
+[ARCHITECTURE.md](ARCHITECTURE.md). That document is written as a technical reference for
+contributors and AI coding tools (Claude Code, Codex, Cline) that need to reason about the
+routing logic quickly.
+
+---
+
 ## 💬 Community & Support
 
 - Join the [Roku Developers Slack](https://join.slack.com/t/rokudevelopers/shared_invite/zt-4vw7rg6v-NH46oY7hTktpRIBM_zGvwA)
