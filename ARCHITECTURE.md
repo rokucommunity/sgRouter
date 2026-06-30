@@ -28,6 +28,38 @@ There is **no separate keepAlive SceneGraph container** — detached views are h
 
 ---
 
+## Scope & non-goals (design constraint — strictly enforce this)
+
+**sgRouter is a router and nothing else.** Its only responsibilities are: match URLs →
+components, own the navigation/history stack, drive view lifecycle, and emit `routerState`
+events. The router answers exactly one question: *"which view is active, and what route
+produced it?"*
+
+The following are **deliberately out of scope** and must **NOT** be implemented inside the
+router (`Router.bs`). The router *delegates* each to the view via a lifecycle hook — adding the
+actual logic to the router is a bug, not a feature:
+
+- **Transitions / animations.** The router shows/hides/moves view nodes **instantly**
+  (`visible`, `translation = [0,0]` or `[10000,10000]`). It never animates. It *enables*
+  transitions only by **awaiting** the view's `beforeViewOpen` / `beforeViewSuspend` promises —
+  the **view** runs its own animation and resolves when done. Do not add interpolators, animation
+  control, or timing logic to `Router.bs`.
+- **Data store / fetching / caching.** The router carries route snapshots (`routeParams`,
+  `queryParams`, `hash`, `context`) but never fetches, owns, or caches application data. The
+  **view** loads its own data in `beforeViewOpen` (return a promise to defer the open). Do not add
+  data managers, caches, or network calls to the router.
+- **Focus management.** The router does **not** decide which node is focused. It hands focus to
+  the active view's `handleFocus(data)` and the **view** owns placement; as a last resort it parks
+  focus on its own top node. `m.__router_focusRequestMade` only tracks whether the router
+  currently owns focus across reparenting — it is not focus logic. Do not add focusable-node
+  tracking, focus heuristics, or "remember last focused child" behavior to the router.
+
+**Rule of thumb:** if a feature concerns *how a screen looks, what data it shows, or where focus
+lands*, it belongs in the **view**, not the router. When in doubt, expose a lifecycle hook and let
+the view decide — do not absorb the responsibility into `Router.bs`.
+
+---
+
 ## File map
 
 | File | Role |

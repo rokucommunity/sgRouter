@@ -2,6 +2,14 @@
 
 Roku SceneGraph routing library (BrightScript). Maps URL paths → components, manages view lifecycles.
 
+## Scope — the router is a router ONLY (strictly enforce)
+sgRouter matches URLs → components, owns the history stack, drives view lifecycle, and emits `routerState` events. It deliberately does **NOT** handle the following — each is delegated to the **view** via a lifecycle hook, and the logic must never be added to `Router.bs`:
+- **Transitions / animations** — the router shows/hides/moves nodes instantly; it only *awaits* the view's `beforeViewOpen` / `beforeViewSuspend` promises so the **view** can animate.
+- **Data store / fetching / caching** — the view loads its own data in `beforeViewOpen`; the router only carries route snapshots.
+- **Focus management** — the router delegates to the active view's `handleFocus`; the **view** decides where focus lands.
+
+Rule: anything about *how a screen looks, what data it shows, or where focus lands* belongs in the **view**, not the router. See [ARCHITECTURE.md](ARCHITECTURE.md) → Scope & non-goals.
+
 ## Read these first
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — how the router works internally (state, navigation pipeline, suspension model, lifecycle ordering, invariants). **Read this before changing routing logic.**
 - **[README.md](README.md)** — end-user usage (route config, lifecycle hooks, guards, examples).
