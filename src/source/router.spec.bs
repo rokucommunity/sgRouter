@@ -317,7 +317,7 @@ namespace tests
         end function
 
         @async()
-        @it("returns false when navigation is already in progress")
+        @it("queues goBack (returns true) when a navigation is already in progress")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
             m.router@._addRoutes([
@@ -329,9 +329,9 @@ namespace tests
             end function).then(function(_, m)
                 ' Start a new navigation (sets navigationInProgress = true)
                 sgRouter.navigateTo("/alpha", { router: m.router })
-                ' goBack should be blocked
+                ' goBack is now queued rather than blocked, and returns true (request accepted)
                 result = sgRouter.goBack({ router: m.router })
-                m.assertFalse(result)
+                m.assertTrue(result)
             end function).toPromise()
         end function
 
@@ -846,7 +846,7 @@ namespace tests
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
         @async()
-        @it("rejects a second navigateTo while the first is in progress")
+        @it("queues a second navigateTo while the first is in progress and runs it after")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
             m.router@._addRoutes([
@@ -855,13 +855,14 @@ namespace tests
             ])
             ' Start nav 1 without awaiting it
             sgRouter.navigateTo("/alpha", { router: m.router })
-            ' Immediately start nav 2 — should be rejected
+            ' Immediately start nav 2 — should be queued (not rejected) and run once nav 1 completes
             nav2 = sgRouter.navigateTo("/beta", { router: m.router })
             return promises.chain(nav2, m).then(function(_, m)
-                m.fail("Concurrent navigation should have been rejected")
-            end function).catch(function(error, m)
-                m.assertNotInvalid(error)
-                m.assertEqual(error.message, "Navigation already in progress")
+                ' nav 2's deferred resolved, meaning it was dequeued and completed; /beta is active
+                activeRoute = sgRouter.getActiveRoute({ router: m.router })
+                m.assertEqual(activeRoute.path, "/beta")
+            end function).catch(function(_error, m)
+                m.fail("Queued navigation should not have been rejected")
             end function).toPromise()
         end function
 
@@ -1056,7 +1057,7 @@ namespace tests
         '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
         @async()
-        @it("rejects when navigation is already in progress")
+        @it("queues popToCheckpoint when a navigation is already in progress and runs it after")
         function _() 'bs:disable-line 1026 LINT1026
             m.router@._initialize({ outlet: m.outlet })
             m.router@._addRoutes([
@@ -1069,12 +1070,14 @@ namespace tests
             end function).then(function(_, m)
                 ' Start a navigation (sets navigationInProgress = true)
                 sgRouter.navigateTo("/alpha", { router: m.router })
-                ' popToCheckpoint should be blocked
+                ' popToCheckpoint is queued rather than blocked; its deferred resolves after it runs
                 return sgRouter.popToCheckpoint("foo", { router: m.router })
             end function).then(function(_, m)
-                m.fail("popToCheckpoint while navigation in progress should have rejected")
-            end function).catch(function(error, m)
-                m.assertEqual(error.message, "Navigation already in progress")
+                ' The queued pop ran once the in-flight navigation completed and unwound to /alpha
+                activeRoute = sgRouter.getActiveRoute({ router: m.router })
+                m.assertEqual(activeRoute.path, "/alpha")
+            end function).catch(function(_error, m)
+                m.fail("Queued popToCheckpoint should not have been rejected")
             end function).toPromise()
         end function
 

@@ -27,6 +27,7 @@
 - **Route guards** (`canActivate`) for protected screens
 - **View lifecycle hooks** for fine-grained control
 - **Stack management** (navigation, suspension, resume, and checkpoint-based unwinding)
+- **Queued navigation** — requests made mid-navigation queue and run in order instead of being rejected
 - **Observable router state** for debugging or analytics
 
 ---
@@ -639,7 +640,8 @@ sgRouter.popToCheckpoint("shop")
 | Situation | Rejection message |
 |---|---|
 | No matching checkpoint found in the history stack | `"popToCheckpoint: no matching checkpoint found in history stack"` |
-| Another navigation is already in progress | `"Navigation already in progress"` |
+
+> If a navigation is already in progress when `popToCheckpoint` is called, it is **not** rejected — it is queued and runs when the current navigation completes (see [Queued navigation](#-queued-navigation)).
 
 ```brightscript
 promises.chain(sgRouter.popToCheckpoint("checkout-start"), m)
@@ -651,6 +653,42 @@ promises.chain(sgRouter.popToCheckpoint("checkout-start"), m)
     end function)
     .toPromise()
 ```
+
+---
+
+## ⏳ Queued navigation
+
+The router runs one navigation at a time. If you call `navigateTo`, `goBack`, or `popToCheckpoint` **while another navigation is still in progress**, the new request is **queued** and runs automatically once the current one completes — it is no longer rejected. Requests run in the order they were made (FIFO), and any number can be queued.
+
+This is what lets a **view lifecycle hook trigger a follow-up navigation** before the current flow finishes:
+
+```brightscript
+' SplashScreen.bs
+function onViewOpen(params as object) as dynamic
+    ' The splash screen's own navigation is still completing here, but this
+    ' navigateTo is queued and runs as soon as it does — no rejection.
+    if m.global.session.isLoggedIn then
+        sgRouter.navigateTo("/home")
+    else
+        sgRouter.navigateTo("/login")
+    end if
+    return promises.resolve(invalid)
+end function
+```
+
+- **`navigateTo` / `popToCheckpoint`** return a promise that resolves/rejects with the **queued** request's eventual result — so you can still chain off it:
+
+  ```brightscript
+  promises.chain(sgRouter.navigateTo("/home"), m)
+      .then(function(_, m)
+          ' runs after "/home" has actually been navigated to, even if it was queued
+      end function)
+      .toPromise()
+  ```
+
+- **`goBack`** always returns a `Boolean` (never a promise) so key handlers can use it directly. When queued it returns `true` (the request was accepted).
+
+> ⚠️ **Do not return a queued navigation's promise from a lifecycle hook of the *same* in-flight navigation** (e.g. returning `sgRouter.navigateTo(...)` from `beforeViewOpen`/`onViewOpen`). The router awaits that hook before completing, but the queued navigation cannot start until the current one completes — a deadlock. Fire the follow-up navigation without awaiting it, as shown above.
 
 ---
 ## 🏗️ Architecture & Internals

@@ -27,4 +27,5 @@ Rule: anything about *how a screen looks, what data it shows, or where focus lan
 - Nested AAs don't reliably survive the promise context — keep promise-context payloads flat.
 - Back navigation reads `m.__router_historyStack`, **not** tree child order.
 - Suspended `detach`-mode views live in the `m.__router_detachedViews` AA, not a SceneGraph node.
+- `navigateTo`/`goBack`/`popToCheckpoint` called while a navigation is in progress **queue** (FIFO) and run on completion — they are not rejected. Each entry point is a thin wrapper over an `*Impl`. Don't return/await a queued navigation's promise from a hook awaited by the same in-flight navigation (`beforeViewOpen`/`beforeViewSuspend`/`onViewOpen`) — it deadlocks.
 - Not implemented (do not assume): `canDeactivate`, child/nested routes, `ttl`.

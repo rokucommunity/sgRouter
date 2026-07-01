@@ -13,6 +13,7 @@ sub init()
     m.__router_historyStack = []
     m.__router_nameMap = {}
     m.__router_navigationInProgress = false
+    m.__router_navigationQueue = []
     m.__router_outlet = Invalid
     m.__router_pendingOutgoingConfig = Invalid
     m.__router_pendingOutgoingView = Invalid
@@ -59,6 +60,13 @@ sub _destroy(_ = Invalid as Dynamic)
     m.__router_historyStack = []
     m.__router_nameMap = {}
     m.__router_navigationInProgress = false
+    ' Reject any queued navigation requests so their callers do not hang, then clear the queue.
+    for each queuedRequest in m.__router_navigationQueue
+        if promises.isPromise(queuedRequest.deferred) then
+            promises.reject({ message: "Router destroyed" }, queuedRequest.deferred)
+        end if
+    end for
+    m.__router_navigationQueue = []
     m.__router_outlet = Invalid
     m.__router_pendingOutgoingConfig = Invalid
     m.__router_pendingOutgoingView = Invalid
@@ -142,14 +150,29 @@ function _getActiveRoute(_ = Invalid as Dynamic) as Dynamic
     return Invalid
 end function
 
-' Function to navigate back in the router history
-' @returns {Boolean} - Whether the navigation was successful or not
+' Function to navigate back in the router history. If a navigation is already in progress the
+' request is queued and run when the current navigation completes; true is returned in that case
+' (the request was accepted). Always returns a Boolean (never a promise) so key handlers such as
+' Outlet.onKeyEvent can use the result directly.
+' @returns {Boolean} - Whether the navigation was performed or queued
 function _goBack(_ = Invalid as Dynamic) as Dynamic
-    if m.__router_navigationInProgress then return false
+    if m.__router_navigationInProgress then
+        m.__router_navigationQueue.push({ type: "goBack" })
+        return true
+    end if
+    return _goBackImpl()
+end function
+
+' Internal back-navigation implementation. Assumes no navigation is in progress (the _goBack
+' wrapper queues in that case). Drains the next queued request on completion, or synchronously when
+' it cannot proceed, and returns a Boolean (the promise chain runs fire-and-forget).
+' @returns {Boolean} - Whether the navigation was performed
+function _goBackImpl() as Dynamic
     m.__router_processingGoBack = true
 
     if m.__router_historyStack.count() <= 1 then
         m.__router_processingGoBack = false
+        _runNextQueuedNavigation()
         return false
     end if
 
@@ -166,6 +189,7 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
 
     if viewToOpen = Invalid then
         m.__router_processingGoBack = false
+        _runNextQueuedNavigation()
         return false
     end if
 
@@ -192,6 +216,10 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
         m.__router_focusRequestMade = m.__router_focusRequestMade OR m.__router_processingGoBack
         m.__router_historyStack.pop()
         return showView(ctx.view, true)
+    end function).then(function(value as Dynamic, ctx as Dynamic) as Dynamic
+        ' Back navigation complete: run the next queued request (if any).
+        _runNextQueuedNavigation()
+        return value
     end function).catch(function(error as Dynamic) as Dynamic
         ' Catch-all terminal event for back navigation: if the close/suspend or showView chain
         ' rejected without any terminal event (e.g. an outgoing view's _beforeViewClose /
@@ -206,6 +234,7 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
         end if
         m.__router_processingGoBack = false
         m.__router_navigationInProgress = false
+        _runNextQueuedNavigation()
         return promises.reject(error)
     end function)
 
@@ -256,7 +285,17 @@ end function
 ' @param {Dynamic} identifier - A non-empty string checkpoint identifier to search for, or omit to find any checkpoint
 ' @returns {Dynamic} - A promise that resolves when navigation completes, or rejects if no checkpoint found
 function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
-    if m.__router_navigationInProgress then return _rejectNavigationInProgress()
+    ' If a navigation is already running, queue this request and run it when the current one
+    ' completes. The returned deferred settles with the queued pop's eventual result.
+    if m.__router_navigationInProgress then
+        return _enqueueNavigation({ type: "popToCheckpoint", identifier: identifier })
+    end if
+    return _finishNavigation(_popToCheckpointImpl(identifier))
+end function
+
+' Internal popToCheckpoint implementation. Assumes no navigation is in progress (the
+' _popToCheckpoint wrapper queues in that case).
+function _popToCheckpointImpl(identifier = "__INVALID__" as Dynamic) as Dynamic
     m.__router_processingGoBack = true
 
     ' Identifier must be a non-empty string
@@ -379,7 +418,19 @@ end function
 ' @param {Object} options - The route config overrides and navigation options
 ' @returns {Dynamic} - The result of the navigation
 function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
-    if m.__router_navigationInProgress then return _rejectNavigationInProgress()
+    ' If a navigation is already running, queue this request and run it when the current one
+    ' completes, rather than rejecting. This lets a view lifecycle hook (e.g. beforeViewOpen) trigger
+    ' a follow-up navigation before the current flow finishes. Queued requests run FIFO; any number
+    ' may be queued. The returned deferred settles with the queued navigation's eventual result.
+    if m.__router_navigationInProgress then
+        return _enqueueNavigation({ type: "navigateTo", path: path, options: options })
+    end if
+    return _finishNavigation(_navigateToImpl(path, options))
+end function
+
+' Internal navigation implementation. Assumes no navigation is in progress (the _navigateTo wrapper
+' queues in that case).
+function _navigateToImpl(path = "" as Dynamic, options = {} as Object) as Dynamic
     if m.__router_deviceInfo = Invalid then return promises.reject({ message: "Router not initialized" })
 
     if NOT rodash.isNonEmptyAA(path) AND NOT rodash.isNonEmptyString(path) then
@@ -1162,11 +1213,70 @@ end function
 '#region *** PRIVATE Helper Functions
 '*************************************************************************
 
-' Returns a rejected promise for the "navigation already in progress" guard used in
-' _popToCheckpoint and _navigateTo. Centralises the message string in one place.
-function _rejectNavigationInProgress() as Dynamic
-    return promises.reject({ message: "Navigation already in progress" })
+' Queues a navigation request to run once the current navigation completes. Called by the public
+' entry points (_navigateTo / _popToCheckpoint) when a navigation is already in progress instead of
+' rejecting. Returns a deferred promise that is later settled with the queued request's result (see
+' _linkDeferred). Any number of requests may be queued; they run FIFO.
+' @param {Object} request - { type: "navigateTo" | "popToCheckpoint", path?, options?, identifier? }
+' @returns {Dynamic} - A deferred promise settled when the queued request eventually completes
+function _enqueueNavigation(request as Object) as Dynamic
+    deferred = promises.create()
+    request.deferred = deferred
+    m.__router_navigationQueue.push(request)
+    return deferred
 end function
+
+' Runs the next queued navigation request if the router is idle. No-op if a navigation is already
+' in progress or the queue is empty, so it is safe to call from any completion point (and may be
+' called more than once for a single completion). Each launched request drains the following one on
+' its own completion — _navigateTo / _popToCheckpoint via _finishNavigation, _goBack internally —
+' so the queue advances one request at a time.
+sub _runNextQueuedNavigation()
+    if m.__router_navigationInProgress then return
+    if m.__router_navigationQueue.count() = 0 then return
+
+    request = m.__router_navigationQueue.shift()
+    if request.type = "goBack" then
+        ' _goBack returns a Boolean and drains the next request itself (on chain completion, or
+        ' synchronously when it cannot proceed), so nothing to link or drain here.
+        _goBack(Invalid)
+    else if request.type = "popToCheckpoint" then
+        _linkDeferred(_popToCheckpoint(request.identifier), request.deferred)
+    else
+        _linkDeferred(_navigateTo(request.path, request.options), request.deferred)
+    end if
+end sub
+
+' Attaches a queue drain to a navigation's result promise WITHOUT altering its settlement, so the
+' next queued request (if any) runs once this navigation completes. Uses .then/.catch rather than
+' .finally, because this promise library resolves .finally results instead of passing rejections
+' through. Returns a promise that mirrors the input's settlement for the original caller.
+' @param {Dynamic} navPromise - The navigation's result promise
+' @returns {Dynamic} - A promise mirroring navPromise's settlement
+function _finishNavigation(navPromise as Dynamic) as Dynamic
+    return promises.chain(navPromise).then(function(value as Dynamic) as Dynamic
+        _runNextQueuedNavigation()
+        return value
+    end function).catch(function(error as Dynamic) as Dynamic
+        _runNextQueuedNavigation()
+        return promises.reject(error)
+    end function).toPromise()
+end function
+
+' Forwards a running navigation's settlement to a previously-returned deferred (the promise handed
+' back to the caller when its request was queued). Draining of the next request is handled by the
+' navigation itself (see _finishNavigation), so this only settles the deferred.
+' @param {Dynamic} navPromise - The running navigation's result promise
+' @param {Dynamic} deferred - The deferred promise returned to the original caller
+sub _linkDeferred(navPromise as Dynamic, deferred as Dynamic)
+    promises.chain(navPromise, { deferred: deferred }).then(function(value as Dynamic, ctx as Dynamic) as Dynamic
+        promises.resolve(value, ctx.deferred)
+        return value
+    end function).catch(function(error as Dynamic, ctx as Dynamic) as Dynamic
+        promises.reject(error, ctx.deferred)
+        return Invalid
+    end function)
+end sub
 
 ' Stamps a pop-style navigationState onto a view's route, used by both _goBack and _popToCheckpoint.
 sub _applyPopNavigationState(view as Object, fromKeepAlive = false as Boolean)
