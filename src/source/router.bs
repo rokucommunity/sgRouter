@@ -39,12 +39,17 @@ namespace sgRouter
     end sub
 
     ' This function is used to navigate to a different screen
-    ' It will return a promise that will resolve when the navigation is complete
+    ' It will return a promise that will resolve when the navigation is complete.
+    ' If a navigation is already in progress, the request is queued (FIFO) and run when the current
+    ' navigation completes rather than being rejected; the returned promise settles with the queued
+    ' navigation's eventual result. Any number of requests may be queued.
+    ' NOTE: do not return/await this promise from a lifecycle hook of the same in-flight navigation
+    ' (e.g. beforeViewOpen/onViewOpen) — that deadlocks. Fire-and-forget the follow-up instead.
     ' @since 0.0.1
     ' @param path - Either a literal path string (e.g. "/home") or an AA for named-route navigation.
     ' @param options - The options to pass to the router
     ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
-    ' @return - A promise that will resolve when the navigation is complete
+    ' @return - A promise that resolves when the navigation (queued or immediate) is complete
     function navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
         r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
@@ -53,6 +58,15 @@ namespace sgRouter
         return promises.resolve(true)
     end function
 
+    ' Navigates back to the previous entry in the history stack.
+    ' If a navigation is already in progress, the request is queued (FIFO) and run when the current
+    ' navigation completes rather than being ignored. Always returns a Boolean (never a promise):
+    ' true if the back navigation was performed or queued, false if it could not run (e.g. no
+    ' router, or nothing to go back to).
+    ' @since 0.0.1
+    ' @param options - The options to pass to the router
+    ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
+    ' @return - Boolean: whether the back navigation was performed or queued
     function goBack(options = {} as Object) as Dynamic
         r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
@@ -79,11 +93,14 @@ namespace sgRouter
     ' Unwinds the history stack to the most recent checkpointed route.
     ' If identifier is provided, pops to the most recent route with that checkpoint identifier.
     ' If identifier is omitted, pops to the most recent route with any checkpoint.
+    ' If a navigation is already in progress, the request is queued (FIFO) and run when the current
+    ' navigation completes rather than being rejected; the returned promise settles with the queued
+    ' pop's eventual result.
     ' @since 0.2.0
     ' @param identifier - The checkpoint identifier to search for, or Invalid to find any checkpoint
     ' @param options - The options to pass to the router
     ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
-    ' @return - A promise that resolves when navigation completes, or rejects if no matching checkpoint is found
+    ' @return - A promise that resolves when navigation (queued or immediate) completes, or rejects if no matching checkpoint is found
     function popToCheckpoint(identifier = "__INVALID__" as Dynamic, options = {} as Object) as Dynamic
         r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
