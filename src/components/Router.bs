@@ -142,11 +142,8 @@ function _getActiveRoute(_ = Invalid as Dynamic) as Dynamic
 end function
 
 ' Function to navigate back in the router history.
-' If a navigation is already in progress, that in-flight navigation is CANCELLED (aborted) and the
-' router stays on the current view — goBack does not pop history in that case. Always returns a
-' Boolean (never a promise) so key handlers such as Outlet.onKeyEvent can use the result directly:
-' true if a back navigation was performed OR an in-flight navigation was cancelled; false if there
-' was nothing to do (no history to go back to).
+' Cancels any in-flight navigation instead of popping (the router stays on the current view).
+' Always returns a Boolean, never a promise, so key handlers can use the result directly.
 ' @returns {Boolean} - Whether a back navigation was performed or an in-flight navigation cancelled
 function _goBack(_ = Invalid as Dynamic) as Dynamic
     if m.__router_navigationInProgress then
@@ -160,9 +157,8 @@ function _goBack(_ = Invalid as Dynamic) as Dynamic
     return _goBackImpl()
 end function
 
-' Internal back-navigation implementation. Assumes no navigation is in progress (the _goBack
-' wrapper cancels the in-flight one in that case). Runs its work on a fire-and-forget promise chain
-' and returns a Boolean synchronously.
+' Internal back-navigation implementation. Assumes no navigation is in progress (_goBack cancels it).
+' Runs on a fire-and-forget promise chain and returns a Boolean synchronously.
 ' @returns {Boolean} - Whether the navigation was performed
 function _goBackImpl() as Dynamic
     m.__router_processingGoBack = true
@@ -299,8 +295,7 @@ function _popToCheckpoint(identifier = "__INVALID__" as Dynamic) as Dynamic
     return _popToCheckpointImpl(identifier)
 end function
 
-' Internal popToCheckpoint implementation. Assumes no navigation is in progress (the
-' _popToCheckpoint wrapper cancels the in-flight one in that case).
+' Internal popToCheckpoint implementation. Assumes no navigation is in progress (_popToCheckpoint cancels it).
 function _popToCheckpointImpl(identifier = "__INVALID__" as Dynamic) as Dynamic
     m.__router_processingGoBack = true
 
@@ -465,8 +460,7 @@ function _navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
     return _navigateToImpl(path, options)
 end function
 
-' Internal navigation implementation. Assumes no navigation is in progress (the _navigateTo wrapper
-' cancels the in-flight one in that case).
+' Internal navigation implementation. Assumes no navigation is in progress (_navigateTo cancels it).
 function _navigateToImpl(path = "" as Dynamic, options = {} as Object) as Dynamic
     if m.__router_deviceInfo = Invalid then return promises.reject({ message: "Router not initialized" })
 
@@ -1083,11 +1077,8 @@ end function
 ' showing the next view. Final placement follows suspendMode: "detach" views are removed from
 ' the tree into the detach store; "hide"/"show" views remain in viewTarget for goBack.
 ' @param {Dynamic} view - The view to suspend
-' @param {Dynamic} navRoute - Optional route of the navigation requesting the suspend. When given,
-'   the view is NOT hidden/detached if that navigation was superseded while _beforeViewSuspend ran —
-'   leaving the outgoing view visible/active. This matters for a cancel with no replacement (goBack
-'   cancel-only): otherwise the view would be hidden with nothing shown in its place (blank screen).
-'   Callers that always want the suspend to complete (goBack/popToCheckpoint/closeOrSuspendView) omit it.
+' @param {Dynamic} navRoute - Optional route of the requesting navigation; when given, the view is
+'   left visible instead of hidden/detached if that navigation is superseded mid-suspend.
 ' @returns {Dynamic} - A promise that resolves once the suspend lifecycle has completed
 function suspendView(view = Invalid as Dynamic, navRoute = Invalid as Dynamic) as Dynamic
     if NOT rodash.isNode(view) then return promises.reject({ message: "Invalid view" })
@@ -1352,12 +1343,9 @@ end function
 '#region *** PRIVATE Helper Functions
 '*************************************************************************
 
-' Cancels (aborts) the navigation currently in flight so a newer request can take over. Dispatches
-' a route-bearing NavigationCancel for the in-flight route, then invalidates the supersession token
-' (m.__router_activeNavRoute) and clears the in-progress flags. The in-flight promise chain detects
-' the invalidated token at its next checkpoint (see _isSuperseded) and bails, cleaning up its own
-' partial work and rejecting its returned promise with a cancellation error. Call only when a
-' navigation is actually in progress.
+' Cancels the in-flight navigation so a newer request can take over: dispatches NavigationCancel,
+' invalidates the supersession token (m.__router_activeNavRoute) and clears the in-progress flags.
+' The cancelled chain bails at its next _isSuperseded checkpoint. Only call while a nav is running.
 sub _cancelActiveNavigation()
     ' Drop any deferred ("pending redirect") navigation tied to the nav being cancelled — the caller
     ' is navigating somewhere else, so the in-flight nav's follow-up redirect no longer applies.
@@ -1373,23 +1361,17 @@ sub _cancelActiveNavigation()
     m.__router_processingGoBack = false
 end sub
 
-' Returns true when the given route is no longer the active navigation — i.e. a newer request
-' superseded it (or it was cancelled). The active navigation's route is stashed as
-' m.__router_activeNavRoute on NavigationStart; a superseding request replaces or invalidates it.
-' Checkpoints throughout the navigation chain use this to bail out of a superseded navigation.
+' Returns true when the route is no longer the active navigation — superseded or cancelled.
+' m.__router_activeNavRoute (set on NavigationStart) is the supersession token.
 ' @param {Object} route - The navigation's route node
 ' @returns {Boolean} - true if this navigation has been superseded/cancelled
 function _isSuperseded(route as Object) as Boolean
     return NOT rodash.isNode(m.__router_activeNavRoute) OR NOT rodash.isNode(route) OR route.id <> m.__router_activeNavRoute.id
 end function
 
-' Runs the single deferred ("pending redirect") navigation, if one is queued and no navigation is
-' currently in flight. Called from showView's finally right after NavigationEnd, so the current
-' navigation (X) has fully committed to history before the deferred one (Y) starts — giving X → Y
-' push semantics (back from Y returns to X). No-op otherwise. The slot is cleared BEFORE running so
-' the deferred navigation may itself queue a follow-up (chained redirects). Forwards the new
-' navigation's settlement onto the deferred returned earlier to the caller of
-' navigateTo({ abortCurrentNavigation: false }).
+' Runs the single deferred navigation, if one is queued and nothing is in flight. Called from
+' showView's finally after NavigationEnd, so the current nav is committed to history first (push
+' semantics). The slot is cleared before running so the deferred nav can queue its own follow-up.
 sub _runPendingNavigation()
     if m.__router_navigationInProgress then return
     if NOT rodash.isAA(m.__router_pendingNavigation) then return
@@ -1405,10 +1387,9 @@ sub _runPendingNavigation()
     end try
 end sub
 
-' Forwards the settlement of a source promise onto a pre-created deferred, so the promise handed
-' back by navigateTo({ abortCurrentNavigation: false }) resolves/rejects exactly as the eventual
-' navigation does. Uses onThen/onCatch (not onFinally, which resolves rather than passes rejections
-' through). The deferred is passed as the callback context (delivered as the 2nd arg).
+' Forwards a source promise's settlement onto a pre-created deferred (the promise returned by
+' navigateTo({ abortCurrentNavigation: false })). Uses onThen/onCatch so rejections pass through;
+' the deferred is passed as the callback context.
 sub _settleInto(source as Object, deferred as Object)
     try
         promises.onThen(source, function(result as Dynamic, d as Dynamic) as Dynamic
@@ -1425,9 +1406,7 @@ sub _settleInto(source as Object, deferred as Object)
 end sub
 
 ' Clears the pending-navigation slot. When reject = true, the queued deferred is rejected with a
-' cancellation error first, so an awaiting caller is never left hanging (the pending redirect was
-' dropped because the in-flight nav was cancelled/errored, superseded by a newer deferred request,
-' or the router was destroyed). Safe to call when the slot is empty.
+' cancellation error first so an awaiting caller is not left hanging. Safe to call when empty.
 sub _clearPendingNavigation(reject = false as Boolean)
     if reject AND rodash.isAA(m.__router_pendingNavigation) then
         promises.reject({ cancelled: true, message: "Pending navigation dropped" }, m.__router_pendingNavigation.deferred)
@@ -1435,10 +1414,9 @@ sub _clearPendingNavigation(reject = false as Boolean)
     m.__router_pendingNavigation = Invalid
 end sub
 
-' Cleans up the incoming view of a superseded navigation so it does not leak. A freshly-created
-' view (never shown) is destroyed. A resumed keepAlive view is left in place: if it was pulled out
-' of the detach store but not yet re-attached, it is put back so a future navigation can find it;
-' otherwise (still parented in viewTarget) it is left as-is.
+' Cleans up a superseded navigation's incoming view so it does not leak: a freshly-created view is
+' destroyed; a resumed keepAlive view is left in place (put back in the detach store if it was
+' pulled out but not yet re-attached).
 ' @param {Object} view - The superseded navigation's incoming view
 ' @param {Boolean} fromKeepAlive - Whether the view was resumed from a suspended keepAlive view
 sub _cleanupSupersededIncomingView(view as Object, fromKeepAlive as Boolean)
@@ -1457,14 +1435,10 @@ sub _cleanupSupersededIncomingView(view as Object, fromKeepAlive as Boolean)
     end if
 end sub
 
-' After a goBack cancel-only, restore the history-top view as active if the cancelled forward
-' navigation had already shown its incoming view. That happens only when the cancel lands after
-' showView ran (e.g. during the incoming view's animated onViewOpen), so m.__router_activeView is the
-' incoming view rather than the history-top view — without this the user would be stranded on the
-' half-committed incoming view (never pushed to history) instead of returning to the current screen.
-' A no-op in the common case (cancel during beforeViewOpen or the outgoing suspend), where the active
-' view was never swapped. Only goBack cancel-only needs this; navigateTo/popToCheckpoint start a
-' replacement navigation that adopts the incoming view as its own outgoing.
+' After a goBack cancel-only, restores the history-top view as active if the cancelled navigation
+' had already shown its incoming view (the cancel landed after showView) — otherwise the user is
+' stranded on a view that was never pushed to history. A no-op in every other case; only goBack
+' needs it, as navigateTo/popToCheckpoint adopt the incoming view as their own outgoing.
 sub _restoreCurrentViewAfterCancel()
     if m.__router_historyStack.count() = 0 then return
     topEntry = m.__router_historyStack[m.__router_historyStack.count() - 1]
