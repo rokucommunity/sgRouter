@@ -267,11 +267,17 @@ empty stack.
 **`_popToCheckpoint(identifier)`**: a wrapper — if `navigationInProgress`, it **cancels** the
 in-flight navigation and then runs `_popToCheckpointImpl(...)`.
 `_popToCheckpointImpl` searches the stack backward from `count()-2` for a matching checkpoint (any
-checkpoint if identifier omitted/`"__INVALID__"`). Re-attaches the target if detached, dispatches
-`NavigationStart`, truncates the stack to `[0..targetIndex]`, then close/suspends every in-tree
-view above the target and destroys non-keepAlive detached views above the target (keepAlive
-detached views stay suspended), then `showView(target, true)`. Rejects on no match. No
-`canDeactivate` guards exist.
+checkpoint if identifier omitted/`"__INVALID__"`). It then runs in **two phases, split by the
+supersession checkpoint**, so that a cancelled pop rolls back:
+1. *Reversible.* Dispatch `NavigationStart`, collect `viewsToPop` (in-tree children above the
+   target, plus non-keepAlive views in the detach store; keepAlive detached views stay suspended),
+   and run their **exit hooks only** — `_beforeViewSuspend` for keepAlive, `_beforeViewClose`
+   otherwise. Nothing is destroyed, removed from the store, hidden or truncated yet.
+2. *Commit (after `_isSuperseded` passes).* Truncate the stack to `[0..targetIndex]`, re-attach the
+   target if it was detached, `finalizePoppedViews(viewsToPop)` (keepAlive: hide → `_onViewSuspend`
+   → final placement, **awaited**; others: destroyed), then `showView(target, true)`.
+
+Rejects on no match. No `canDeactivate` guards exist.
 
 ---
 
@@ -308,9 +314,15 @@ Events an observer sees when nav A is superseded by nav B: `...A NavigationStart
 **Cancel during the commit phase.** A cancel can arrive after the dominant `beforeViewOpen` window,
 while the outgoing view is suspending or the incoming view is opening. The router handles these so a
 cancel with no replacement navigation (a `goBack` cancel-only) does not corrupt state:
-- **During the outgoing view's `beforeViewSuspend`:** `suspendView` is passed the navigation's route
-  and, if that navigation was superseded while `beforeViewSuspend` ran, it skips `hideView` /
-  `_onViewSuspend` / final placement — leaving the outgoing view visible and active (no blank screen).
+- **During the outgoing view's `beforeViewClose` / `beforeViewSuspend`:** `closeOrSuspendView`,
+  `closeView` and `suspendView` all take the requesting navigation's route. If that navigation was
+  superseded while the hook ran, the teardown is abandoned — `closeView` skips `removeNode`,
+  `suspendView` skips `hideView` / `_onViewSuspend` / final placement — leaving the outgoing view
+  visible and active (no blank screen), and `_resumeAfterAbortedTeardown` fires the view's
+  `onViewResume` so it can undo an exit animation (and, after a close, regain focus eligibility,
+  which `_beforeViewClose` had cleared). **Any new teardown call site must pass the nav route**, or a
+  cancelled navigation destroys the screen it was leaving. (`_popToCheckpointImpl` tears several
+  views down at once, so it gets the same guarantee structurally instead — see below.)
 - **`showView` uses `.then`/`.catch`, not `.finally`.** The success `.then` re-checks `_isSuperseded`
   *before* committing and, if superseded, **rejects** (so the caller's post-show cleanup is skipped
   too — it no longer destroys a dead navigation's `closeViews` or reverts its override). A committed
@@ -326,6 +338,20 @@ cancel with no replacement navigation (a `goBack` cancel-only) does not corrupt 
   on the view that was animating in. This runs only for `goBack` cancel-only; `navigateTo`/
   `popToCheckpoint` cancels are followed by a replacement navigation that adopts the incoming view as
   its own outgoing.
+
+**A cancelled `popToCheckpoint` rolls back.** A pop touches many views and the stack at once, so
+instead of aborting each teardown it splits into a reversible phase and a commit phase either side
+of its `_isSuperseded` check (see [goBack & checkpoints](#goback--checkpoints)). Cancelled before
+the target is shown, it has changed nothing: the stack is untruncated, every view is alive and still
+in its place (in the tree or the detach store), and the target was never re-attached. The rollback
+only calls `_resumeAfterAbortedTeardown` on the one view that was on screen — and skips even that
+when `m.__router_activeNavRoute` is live, because a replacement navigation has adopted that view as
+its own outgoing and is suspending it. **The target view is never touched on rollback**: a
+replacement navigation may already have resumed it, and re-detaching it would blank the screen.
+
+The one window that is not reversible is the same as for a forward navigation: once `showView` has
+started, the stack is truncated and the views above the target are gone. A cancel there behaves like
+any other post-commit cancel.
 
 ### Opt-out: `abortCurrentNavigation: false` (redirect after the current nav)
 
@@ -430,6 +456,17 @@ leading `/`).
   navigation will keep running and corrupt state. Ensure exactly one terminal event
   (`End`/`Error`/`Cancel`) fires per navigation. A guard redirect briefly clears
   `navigationInProgress` before re-navigating — that is a continuation, not a cancel.
+- **A cancellation must never destroy the outgoing view.** The view the user is looking at is torn
+  down only by a navigation that goes on to show something in its place. Two mechanisms enforce
+  this, and a new teardown path must use one of them: pass the nav route to
+  `closeOrSuspendView`/`closeView`/`suspendView` so the teardown aborts on supersession (`goBack`,
+  forward nav), or split the exit hooks from the destructive work either side of the `_isSuperseded`
+  check (`popToCheckpoint`). See
+  [Cancel during the commit phase](#interruptible-navigation-navigatetogobackpoptocheckpoint).
+- **A genuine failure still runs `finalizeCloseViews`; a cancellation doesn't.** `addViewToStack`
+  tears its `closeViews` down on both the success and the error path — they already had
+  `beforeViewClose` called on them, so skipping it strands them in the tree. Only a superseded
+  navigation skips it, because the request that superseded it owns those views now.
 - **Promise hooks must always resolve.** A `beforeViewSuspend`/`beforeViewOpen` that never
   resolves stalls navigation forever (the router awaits it).
 - **`sgRouter` namespace is view-scoped.** It resolves the router via `m.top.getScene().__router`;

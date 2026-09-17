@@ -1,0 +1,18 @@
+import "pkg:/source/roku_modules/promises/promises.brs"
+
+' Test-only view with an ASYNC close hook, standing in for an exit animation: beforeViewClose
+' returns a promise that only settles a couple of hundred ms later. That parks a back/pop
+' navigation inside closeOrSuspendView long enough for a test to interrupt it.
+function beforeViewClose(params = {} as Object) as Dynamic
+    pending = promises.create()
+    promises.internal.delay(function(promise as Dynamic) as Dynamic
+        promises.resolve(Invalid, promise)
+        return Invalid
+    end function, pending, 0.2)
+    return pending
+end function
+
+' Focusable so a test can prove an aborted close leaves the view usable, not just present.
+function handleFocus(data = {} as Object) as Boolean
+    return true
+end function

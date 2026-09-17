@@ -55,6 +55,10 @@ function onRouteUpdate(event = {} as Object) as Dynamic
 end function
 
 function _onViewResume(_ as Dynamic, applyFocus = false as Boolean) as Dynamic
+    ' A resumed view is eligible for focus again. This also restores the flag when the router
+    ' aborts a close it had already started (a cancelled navigation), since _beforeViewClose
+    ' cleared it on the way out.
+    m._allowHandleFocus = true
     return onViewResume(_)
 end function
 

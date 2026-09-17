@@ -73,7 +73,9 @@ Views extending `sgRouter_View` can define:
 - `onViewOpen` → Called after previous view is closed/suspended
 - `beforeViewClose` → Invoked before a view is destroyed
 - `beforeViewSuspend` → Invoked before a view is hidden/suspended (before `onViewSuspend`)
-- `onViewSuspend` / `onViewResume` → Handle stack suspensions/resumptions
+- `onViewSuspend` / `onViewResume` → Handle stack suspensions/resumptions. `onViewResume` also fires
+  if the router **abandons** a close/suspend it had already started, because the navigation that
+  asked for it was cancelled — the view is staying on screen, so undo any exit animation
 - `onRouteUpdate` → Fired when navigating to the same route with updated params/hash
 - `handleFocus` → Defines focus handling when the view becomes active
 
@@ -687,6 +689,10 @@ When a navigation is cancelled:
   ```
 
 This makes rapid navigation safe — e.g. a user mashing buttons, or a fresh deep link arriving while a slow screen is still loading: the latest request always wins, and the superseded one tears down cleanly.
+
+The view the user is currently looking at is never destroyed by a cancellation. If the cancel lands while that view is already running `beforeViewClose` or `beforeViewSuspend` (an exit animation, say), the router abandons the teardown and calls the view's `onViewResume` instead — so a second `back` press during a slow back transition leaves you on the screen you were on, rather than on an empty outlet.
+
+The same holds for `popToCheckpoint`, which unwinds several screens at once: cancel it before its target appears and **nothing** it was going to change has changed — the history stack is intact and every screen it was about to close is still there. Once the target has started opening, the pop is committed like any other navigation.
 
 > `goBack()` always returns a `Boolean` (never a promise) so key handlers such as `onKeyEvent` can use it directly: `true` if it performed a back navigation **or** cancelled an in-flight one, `false` if there was nothing to do.
 
