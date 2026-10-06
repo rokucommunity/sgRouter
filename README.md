@@ -27,6 +27,7 @@
 - **Route guards** (`canActivate`) for protected screens
 - **View lifecycle hooks** for fine-grained control
 - **Stack management** (navigation, suspension, resume, and checkpoint-based unwinding)
+- **Interruptible navigation** — a new `navigateTo`/`popToCheckpoint` cancels an in-flight navigation and takes over; `goBack` cancels an in-flight navigation
 - **Observable router state** for debugging or analytics
 
 ---
@@ -72,7 +73,9 @@ Views extending `sgRouter_View` can define:
 - `onViewOpen` → Called after previous view is closed/suspended
 - `beforeViewClose` → Invoked before a view is destroyed
 - `beforeViewSuspend` → Invoked before a view is hidden/suspended (before `onViewSuspend`)
-- `onViewSuspend` / `onViewResume` → Handle stack suspensions/resumptions
+- `onViewSuspend` / `onViewResume` → Handle stack suspensions/resumptions. `onViewResume` also fires
+  if the router **abandons** a close/suspend it had already started, because the navigation that
+  asked for it was cancelled — the view is staying on screen, so undo any exit animation
 - `onRouteUpdate` → Fired when navigating to the same route with updated params/hash
 - `handleFocus` → Defines focus handling when the view becomes active
 
@@ -170,6 +173,7 @@ end sub
     "routeConfig": {},
     "queryParams": {},
     "routeParams": {},
+    "navigationState": {},   // { fromPushState, fromPopState, fromKeepAlive, fromRedirect }
     "hash": ""
   },
   "error": {}       // only present on NavigationError
@@ -638,7 +642,8 @@ sgRouter.popToCheckpoint("shop")
 | Situation | Rejection message |
 |---|---|
 | No matching checkpoint found in the history stack | `"popToCheckpoint: no matching checkpoint found in history stack"` |
-| Another navigation is already in progress | `"Navigation already in progress"` |
+
+> If a navigation is already in progress when `popToCheckpoint` is called, it is **not** rejected — the in-flight navigation is cancelled and the pop takes over (see [Interruptible navigation](#-interruptible-navigation)).
 
 ```brightscript
 promises.chain(sgRouter.popToCheckpoint("checkout-start"), m)
@@ -652,6 +657,76 @@ promises.chain(sgRouter.popToCheckpoint("checkout-start"), m)
 ```
 
 ---
+
+## 🛑 Interruptible navigation
+
+The router runs one navigation at a time. If a navigation is **still in progress** (for example, the incoming view is loading data in `beforeViewOpen`) when a new request arrives, the in-flight navigation is **cancelled** rather than the new request being rejected:
+
+| Called mid-navigation | Effect |
+|---|---|
+| `navigateTo(...)` | Cancels the in-flight navigation and navigates to the new destination. |
+| `popToCheckpoint(...)` | Cancels the in-flight navigation and runs the pop. |
+| `goBack()` | Cancels the in-flight navigation and stays on the current view (no history pop). |
+
+When a navigation is cancelled:
+
+- A **`NavigationCancel`** event is dispatched for it (observable via `routerState`).
+- Its returned promise **rejects** with `{ cancelled: true, message: "Navigation cancelled" }`, so an awaiting caller can tell it was superseded:
+
+  ```brightscript
+  promises.chain(sgRouter.navigateTo("/details/42"), m)
+      .then(function(_, m)
+          ' arrived at /details/42
+      end function)
+      .catch(function(error, m)
+          if error.cancelled = true then
+              ' a newer navigation took over — usually nothing to do
+          else
+              print "navigation failed: " + error.message
+          end if
+      end function)
+      .toPromise()
+  ```
+
+This makes rapid navigation safe — e.g. a user mashing buttons, or a fresh deep link arriving while a slow screen is still loading: the latest request always wins, and the superseded one tears down cleanly.
+
+The view the user is currently looking at is never destroyed by a cancellation. If the cancel lands while that view is already running `beforeViewClose` or `beforeViewSuspend` (an exit animation, say), the router abandons the teardown and calls the view's `onViewResume` instead — so a second `back` press during a slow back transition leaves you on the screen you were on, rather than on an empty outlet.
+
+The same holds for `popToCheckpoint`, which unwinds several screens at once: cancel it before its target appears and **nothing** it was going to change has changed — the history stack is intact and every screen it was about to close is still there. Once the target has started opening, the pop is committed like any other navigation.
+
+> `goBack()` always returns a `Boolean` (never a promise) so key handlers such as `onKeyEvent` can use it directly: `true` if it performed a back navigation **or** cancelled an in-flight one, `false` if there was nothing to do.
+
+### Redirect *after* the current screen — `abortCurrentNavigation: false`
+
+The cancel-and-take-over behavior above is controlled by the `abortCurrentNavigation` option, which **defaults to `true`**. Set it to **`false`** for the opposite: let the current navigation **finish**, then go somewhere else — a redirect that does **not** cancel/replace the current screen:
+
+```brightscript
+' SplashScreen.bs — redirect once this screen has opened
+function onViewOpen(params as object) as dynamic
+    target = m.global.session.isLoggedIn ? "/home" : "/login"
+    ' Fire-and-forget: /splash finishes opening (and stays in history), THEN /home (or /login) is
+    ' pushed on top. Back from there returns to /splash.
+    sgRouter.navigateTo(target, { abortCurrentNavigation: false })
+    return promises.resolve(invalid)
+end function
+```
+
+- With `abortCurrentNavigation: false`, an in-flight navigation is **not** cancelled — this request runs once the current one completes. When nothing is in flight, it runs immediately (the flag is a no-op).
+- **Push semantics:** the current screen completes and stays in history; the target is pushed on top, so **Back returns to the current screen**.
+- Only **one** deferred navigation is held (last request wins); it is dropped and its promise rejected (`{ cancelled: true }`) if the in-flight navigation is cancelled or errors.
+- ⚠️ **Do not `return`/await the returned promise from the same hook that created it** — the deferred navigation only runs after the current one's `NavigationEnd`, which waits on your hook: a deadlock. Fire-and-forget it, and observe `routerState` if you need to react to the redirect completing.
+
+---
+## 🏗️ Architecture & Internals
+
+This README covers **how to use** sgRouter. For **how it works internally** — the navigation
+pipeline, view-suspension model, state structures, lifecycle ordering, and invariants — see
+[ARCHITECTURE.md](ARCHITECTURE.md). That document is written as a technical reference for
+contributors and AI coding tools (Claude Code, Codex, Cline) that need to reason about the
+routing logic quickly.
+
+---
+
 ## 💬 Community & Support
 
 - Join the [Roku Developers Slack](https://join.slack.com/t/rokudevelopers/shared_invite/zt-4vw7rg6v-NH46oY7hTktpRIBM_zGvwA)

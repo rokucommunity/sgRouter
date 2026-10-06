@@ -1,0 +1,11 @@
+import "pkg:/source/router.bs"
+import "pkg:/source/roku_modules/promises/promises.brs"
+
+' Test-only view that "presses Back" the instant it opens: its onViewOpen calls goBack while this
+' navigation is still in flight (showView has already swapped m.__router_activeView to this view).
+' Exercises the window-3 cancel path — goBack must cancel this navigation AND restore the previous
+' view, rather than stranding the user on this half-committed incoming view.
+function onViewOpen(params = {} as Object) as Dynamic
+    sgRouter.goBack({ router: m.top.router })
+    return promises.resolve(Invalid)
+end function

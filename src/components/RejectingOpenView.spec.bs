@@ -1,0 +1,8 @@
+import "pkg:/source/roku_modules/promises/promises.brs"
+
+' Test-only view whose onViewOpen REJECTS, exercising the failed-view-open path: the router must
+' emit NavigationError (not NavigationEnd) and reject the navigation promise, rather than recording
+' the failed open as a successful navigation.
+function onViewOpen(params = {} as Object) as Dynamic
+    return promises.reject({ message: "onViewOpen failed" })
+end function

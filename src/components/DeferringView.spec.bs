@@ -1,0 +1,14 @@
+import "pkg:/source/router.bs"
+import "pkg:/source/roku_modules/promises/promises.brs"
+
+' Test-only view that, on open, fires a DEFERRED navigation ({ abortCurrentNavigation: false }) to
+' the path in its route context (fire-and-forget, per the documented guidance). Exercises the
+' redirect-after-open path: this view finishes opening (and stays in history), then the router
+' pushes the target on top, so back from the target returns here.
+function onViewOpen(params = {} as Object) as Dynamic
+    target = params.route.context.deferTarget
+    if type(target) = "String" AND target <> "" then
+        sgRouter.navigateTo(target, { abortCurrentNavigation: false, router: m.top.router })
+    end if
+    return promises.resolve(Invalid)
+end function

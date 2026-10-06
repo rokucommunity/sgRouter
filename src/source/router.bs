@@ -39,12 +39,17 @@ namespace sgRouter
     end sub
 
     ' This function is used to navigate to a different screen
-    ' It will return a promise that will resolve when the navigation is complete
+    ' It will return a promise that will resolve when the navigation is complete.
+    ' Any in-flight navigation is cancelled (its promise rejects, a NavigationCancel event fires)
+    ' unless abortCurrentNavigation is false, which defers this navigation until that one completes.
+    ' A deferred navigation is fire-and-forget: awaiting its promise from the hook that created it
+    ' deadlocks. Only one deferred navigation is held (last wins).
     ' @since 0.0.1
     ' @param path - Either a literal path string (e.g. "/home") or an AA for named-route navigation.
     ' @param options - The options to pass to the router
     ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
-    ' @return - A promise that will resolve when the navigation is complete
+    ' @param options.abortCurrentNavigation - Default true (cancel the in-flight nav); false defers until it completes
+    ' @return - A promise that resolves when the navigation is complete, or rejects if it is cancelled/dropped
     function navigateTo(path = "" as Dynamic, options = {} as Object) as Dynamic
         r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
@@ -53,6 +58,13 @@ namespace sgRouter
         return promises.resolve(true)
     end function
 
+    ' Navigates back to the previous entry in the history stack.
+    ' If a navigation is in flight it is cancelled instead and the router stays put (no pop).
+    ' Always returns a Boolean, never a promise.
+    ' @since 0.0.1
+    ' @param options - The options to pass to the router
+    ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
+    ' @return - Boolean: whether a back navigation was performed or an in-flight navigation cancelled
     function goBack(options = {} as Object) as Dynamic
         r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then
@@ -79,11 +91,12 @@ namespace sgRouter
     ' Unwinds the history stack to the most recent checkpointed route.
     ' If identifier is provided, pops to the most recent route with that checkpoint identifier.
     ' If identifier is omitted, pops to the most recent route with any checkpoint.
+    ' Any in-flight navigation is cancelled and this pop takes over.
     ' @since 0.2.0
     ' @param identifier - The checkpoint identifier to search for, or Invalid to find any checkpoint
     ' @param options - The options to pass to the router
     ' @param options.router - The router to use, if not provided, it will try to find the router in the current chain
-    ' @return - A promise that resolves when navigation completes, or rejects if no matching checkpoint is found
+    ' @return - A promise that resolves when navigation (queued or immediate) completes, or rejects if no matching checkpoint is found
     function popToCheckpoint(identifier = "__INVALID__" as Dynamic, options = {} as Object) as Dynamic
         r = options.router <> Invalid ? options.router : sgRouter.getRouter()
         if rodash.isNotInvalid(r) then

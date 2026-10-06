@@ -41,7 +41,7 @@ namespace sgRouter
         type as String ' NavigationStart | RoutesRecognized | GuardsCheckStart | GuardsCheckEnd | ActivationStart | ActivationEnd | ResolveStart | ResolveEnd | NavigationEnd | NavigationCancel | NavigationError
         id as String ' route id
         optional url as String ' route path
-        optional state as Object ' route snapshot (routeConfig, queryParams, routeParams, hash)
+        optional state as Object ' route snapshot (routeConfig, queryParams, routeParams, navigationState, hash)
         optional error as Object ' only present on NavigationError
     end interface
 end namespace
